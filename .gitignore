@@ -131,6 +131,7 @@ vault_creds/
 **/vault_creds/
 **/wireguard/values/
 **/wireguard/cleanup/
+k8s/vault/on_vps/vault-service-account.json
 
 # Kubernetes secrets
 *.kubeconfig
