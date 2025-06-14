@@ -1,0 +1,60 @@
+---
+- name: Update Local WireGuard Configuration
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: true
+  vars:
+    system_wg_conf: "/etc/wireguard/wg0.conf"
+    server_public_key: "{{ lookup('file', '/Users/sil/Documents/Work/credit_system/app_dev/playbooks/vault_vps/wireguard/values/server_public.txt') | trim }}"
+    vps_ip: "{{ lookup('file', '/Users/sil/Documents/Work/credit_system/app_dev/playbooks/vault_vps/wireguard/values/vault_ip.txt') | regex_replace(':.*$', '') }}"
+    allowed_ips: "{{ lookup('file', '/Users/sil/Documents/Work/credit_system/app_dev/playbooks/vault_vps/wireguard/values/vault_allowwed_ips.txt') | trim }}"
+  tasks:
+    - name: Get client private key
+      slurp:
+        src: /etc/wireguard/private.key
+      register: client_private_key
+
+    - name: Set client private key variable
+      set_fact:
+        wireguard_client_private_key: "{{ client_private_key.content | b64decode | trim }}"
+
+    - name: Stop WireGuard interface
+      shell: sudo wg-quick down wg0 2>/dev/null || true
+      register: wg0_down
+      ignore_errors: yes
+
+    - name: Wait for interface to be down
+      pause:
+        seconds: 3
+
+    - name: Update WireGuard configuration
+      template:
+        src: templates/client_wg0.conf.j2
+        dest: "{{ system_wg_conf }}"
+        mode: '0600'
+      vars:
+        wireguard_client_private_key: "{{ wireguard_client_private_key }}"
+        wireguard_server_public_key: "{{ server_public_key }}"
+
+    - name: Start WireGuard interface
+      shell: sudo wg-quick up wg0
+      register: wg_up_result
+      ignore_errors: yes
+
+    - name: Display WireGuard status
+      shell: sudo wg show
+      register: wg_show_result
+      ignore_errors: yes
+
+    - name: Display current WireGuard status
+      debug:
+        msg: "Current WireGuard status: {{ wg_show_result.stdout_lines }}"
+
+    - name: Remove old SSH host key
+      shell: ssh-keygen -R 10.0.0.1
+      register: ssh_key_result
+      ignore_errors: yes
+      become: false
+      environment:
+        HOME: "{{ ansible_env.HOME }}" 

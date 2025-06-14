@@ -1,0 +1,45 @@
+---
+- name: Setup Vault Unseal Scripts
+  hosts: vault_private
+  become: true
+  tasks:
+    - name: Create scripts directory
+      file:
+        path: /k8s/vault/scripts
+        state: directory
+        mode: '0755'
+
+    - name: Create check_and_unseal.sh script
+      template:
+        src: check_and_unseal.sh.j2
+        dest: /k8s/vault/scripts/check_and_unseal.sh
+        mode: '0700'
+
+    - name: Create unseal.sh script
+      template:
+        src: unseal.sh.j2
+        dest: /k8s/vault/scripts/unseal.sh
+        mode: '0700'
+
+    - name: Create log files
+      file:
+        path: "{{ item }}"
+        state: touch
+        mode: '0600'
+      with_items:
+        - /k8s/vault/scripts/check.log
+        - /k8s/vault/scripts/unseal.log
+
+    - name: Setup cron job for check_and_unseal.sh
+      cron:
+        name: "Check and unseal Vault if needed"
+        job: "/k8s/vault/scripts/check_and_unseal.sh"
+        minute: "*"
+        user: root
+        state: present
+
+    - name: Ensure cron service is running
+      service:
+        name: cron
+        state: started
+        enabled: yes 

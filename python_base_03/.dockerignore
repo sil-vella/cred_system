@@ -1,7 +1,0 @@
-docker-compose.yml
-.env
-.gitignore
-.vscode
-venv
-vps_backups
-Dockerfile

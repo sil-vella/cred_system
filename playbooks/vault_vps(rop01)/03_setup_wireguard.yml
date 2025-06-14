@@ -1,0 +1,110 @@
+---
+- name: Setup WireGuard
+  hosts: vault_public
+  become: true
+  vars:
+    ansible_user: hcvlt
+    ansible_ssh_private_key_file: /Users/sil/.ssh/vault_key
+  tasks:
+    - name: Get client public key
+      local_action:
+        module: slurp
+        src: /etc/wireguard/public.key
+      register: client_public_key
+      become: true
+
+    - name: Set client public key variable
+      set_fact:
+        wireguard_client_public_key: "{{ client_public_key.content | b64decode }}"
+
+    - name: Install required packages
+      apt:
+        name: 
+          - wireguard
+          - netfilter-persistent
+        state: present
+        update_cache: yes
+
+    - name: Create WireGuard directory
+      file:
+        path: /etc/wireguard
+        state: directory
+        mode: '0700'
+
+    - name: Generate WireGuard server keys
+      shell: |
+        wg genkey | tee /etc/wireguard/server_private.key | wg pubkey | tee /etc/wireguard/server_public.key
+      args:
+        creates: /etc/wireguard/server_private.key
+
+    - name: Get server public key
+      slurp:
+        src: /etc/wireguard/server_public.key
+      register: server_public_key
+
+    - name: Get server private key
+      slurp:
+        src: /etc/wireguard/server_private.key
+      register: server_private_key
+
+    - name: Create WireGuard configuration
+      template:
+        src: templates/wg0.conf.j2
+        dest: /etc/wireguard/wg0.conf
+        mode: '0600'
+      vars:
+        wireguard_server_private_key: "{{ server_private_key.content | b64decode }}"
+
+    - name: Enable IP forwarding
+      sysctl:
+        name: net.ipv4.ip_forward
+        value: '1'
+        state: present
+        reload: yes
+
+    - name: Enable and start WireGuard service
+      systemd:
+        name: wg-quick@wg0
+        state: started
+        enabled: yes
+
+    - name: Display server public key
+      debug:
+        msg: "Server public key: {{ server_public_key.content | b64decode }}"
+
+    - name: Display current iptables rules
+      shell: iptables -L -v -n
+      register: iptables_output
+
+    - name: Show iptables rules
+      debug:
+        var: iptables_output.stdout_lines
+
+    - name: Create local wireguard directory
+      local_action:
+        module: file
+        path: "{{ playbook_dir }}/wireguard"
+        state: directory
+        mode: '0700'
+      become: false
+
+    - name: Create wireguard values directory
+      local_action:
+        module: file
+        path: "{{ playbook_dir }}/wireguard/values"
+        state: directory
+        mode: '0700'
+      become: false
+
+    - name: Copy server public key to local wireguard directory
+      local_action:
+        module: copy
+        content: "{{ server_public_key.content | b64decode }}"
+        dest: "{{ playbook_dir }}/wireguard/values/server_public.txt"
+        mode: '0600'
+      become: false
+
+    - name: Wait for WireGuard connection
+      pause:
+        seconds: 10
+        prompt: "Please connect to the server via WireGuard (10.0.0.1) to verify the connection works. Press Enter when ready to proceed." 

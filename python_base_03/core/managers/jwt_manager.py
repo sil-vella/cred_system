@@ -12,7 +12,6 @@ from flask import request
 class TokenType(Enum):
     ACCESS = "access"
     REFRESH = "refresh"
-    WEBSOCKET = "websocket"
 
 class JWTManager:
     def __init__(self):
@@ -22,7 +21,6 @@ class JWTManager:
         # Shorter token lifetimes
         self.access_token_expire_seconds = 1800  # 30 minutes
         self.refresh_token_expire_seconds = 86400  # 24 hours
-        self.websocket_token_expire_seconds = 1800  # 30 minutes
         custom_log("JWTManager initialized")
 
     def _get_client_fingerprint(self) -> str:
@@ -48,8 +46,6 @@ class JWTManager:
                 expire = datetime.utcnow() + timedelta(seconds=self.access_token_expire_seconds)
             elif token_type == TokenType.REFRESH:
                 expire = datetime.utcnow() + timedelta(seconds=self.refresh_token_expire_seconds)
-            else:  # WEBSOCKET
-                expire = datetime.utcnow() + timedelta(seconds=self.websocket_token_expire_seconds)
         
         # Add client fingerprint for token binding
         client_fingerprint = self._get_client_fingerprint()
@@ -95,13 +91,6 @@ class JWTManager:
                     custom_log(f"Invalid token type. Expected: {expected_type.value}, Got: {token_type}")
                     return None
             
-            # Verify client fingerprint if present and if it's a WebSocket token
-            if expected_type == TokenType.WEBSOCKET and "fingerprint" in payload:
-                current_fingerprint = self._get_client_fingerprint()
-                if current_fingerprint and payload["fingerprint"] != current_fingerprint:
-                    custom_log("Token bound to different client")
-                    return None
-                
             return payload
             
         except ExpiredSignatureError:
@@ -208,12 +197,4 @@ class JWTManager:
 
     def create_refresh_token(self, data: Dict[str, Any], expires_in: Optional[int] = None) -> str:
         """Create a new refresh token."""
-        return self.create_token(data, TokenType.REFRESH, expires_in)
-
-    def create_websocket_token(self, data: Dict[str, Any], expires_in: Optional[int] = None) -> str:
-        """Create a new WebSocket token."""
-        return self.create_token(data, TokenType.WEBSOCKET, expires_in)
-
-    def verify_websocket_token(self, token: str) -> Optional[Dict[str, Any]]:
-        """Verify a WebSocket token."""
-        return self.verify_token(token, TokenType.WEBSOCKET) 
+        return self.create_token(data, TokenType.REFRESH, expires_in) 

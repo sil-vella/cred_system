@@ -2,7 +2,6 @@ from core.managers.plugin_manager import PluginManager
 from core.managers.service_manager import ServicesManager
 from core.managers.hooks_manager import HooksManager
 from core.managers.module_manager import ModuleManager
-from core.managers.websocket_manager import WebSocketManager
 from core.managers.rate_limiter_manager import RateLimiterManager
 from jinja2 import ChoiceLoader, FileSystemLoader
 from tools.logger.custom_logging import custom_log, function_log, game_play_log, log_function_call
@@ -22,7 +21,6 @@ class AppManager:
         self.services_manager = ServicesManager()
         self.hooks_manager = HooksManager()
         self.module_manager = ModuleManager()
-        self.websocket_manager = WebSocketManager()
         self.rate_limiter_manager = RateLimiterManager()
         self.template_dirs = []  # List to track template directories
         self.flask_app = None  # Flask app reference
@@ -30,8 +28,35 @@ class AppManager:
         self.scheduler = None
         self.db_manager = None
         self.redis_manager = None
+        self._initialized = False
 
         custom_log("AppManager instance created.")
+
+    def is_initialized(self):
+        """Check if the AppManager is properly initialized."""
+        return self._initialized
+
+    def check_database_connection(self):
+        """Check if the database connection is healthy."""
+        try:
+            if not self.db_manager:
+                return False
+            # Try to execute a simple query to check connection
+            return self.db_manager.check_connection()
+        except Exception as e:
+            self.logger.error(f"Database health check failed: {e}")
+            return False
+
+    def check_redis_connection(self):
+        """Check if the Redis connection is healthy."""
+        try:
+            if not self.redis_manager:
+                return False
+            # Try to execute a PING command
+            return self.redis_manager.ping()
+        except Exception as e:
+            self.logger.error(f"Redis health check failed: {e}")
+            return False
 
     @log_function_call
     def initialize(self, app):
@@ -52,9 +77,6 @@ class AppManager:
         # Initialize services
         self.services_manager.initialize_services()
 
-        # Initialize WebSocket support
-        self.websocket_manager.initialize(app)
-
         # Register and initialize plugins
         custom_log("Initializing plugins...")
         self.plugin_manager.register_plugins(self)
@@ -68,10 +90,13 @@ class AppManager:
 
         # Set up monitoring middleware
         self._setup_monitoring()
+        
+        # Mark as initialized
+        self._initialized = True
 
     def run(self, app, **kwargs):
-        """Run the Flask application with WebSocket support."""
-        self.websocket_manager.run(app, **kwargs)
+        """Run the Flask application."""
+        app.run(**kwargs)
 
     @log_function_call
     def get_plugins_path(self, return_url=False):

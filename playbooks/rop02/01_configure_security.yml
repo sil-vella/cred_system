@@ -1,0 +1,64 @@
+- name: Configure server with security best practices
+  hosts: rop02
+  become: true
+  become_method: sudo
+  vars:
+    new_user: ubuntu
+    rop02_user: rop02_user
+    rop02_user_groups: sudo
+    rop02_user_shell: /bin/bash
+    ansible_user: rop02_user
+    ansible_ssh_private_key_file: /Users/sil/.ssh/rop02_key
+
+  tasks:
+    - name: Install ntpdate
+      apt:
+        name: ntpdate
+        state: present
+        update_cache: yes
+
+    - name: Sync time with NTP servers
+      command: ntpdate pool.ntp.org
+      changed_when: false
+      ignore_errors: true
+
+    - name: Update and upgrade all packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+        force_apt_get: yes
+
+    - name: Install essential software
+      apt:
+        name:
+          - fail2ban
+          - apparmor
+          - apparmor-profiles
+          - auditd
+          - libpam-pwquality
+          - openssh-server
+          - unattended-upgrades
+          - apt-listchanges
+          - nano
+          - wget
+          - curl
+          - zip
+          - unzip
+          - git
+          - software-properties-common
+          - rsync
+        state: present
+        update_cache: yes
+
+    - name: Ensure AppArmor is running
+      service:
+        name: apparmor
+        state: started
+        enabled: yes
+
+    - name: Ensure Fail2Ban is running
+      service:
+        name: fail2ban
+        state: started
+        enabled: yes
+

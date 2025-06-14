@@ -5,6 +5,7 @@ from pymongo import MongoClient, ReadPreference
 from pymongo.read_concern import ReadConcern
 from pymongo.write_concern import WriteConcern
 from pymongo.errors import OperationFailure, ConnectionFailure
+from urllib.parse import quote_plus
 import logging
 import os
 
@@ -21,8 +22,10 @@ class DatabaseManager:
         """Initialize the database manager with role-based access control."""
         self.encryption_manager = EncryptionManager()
         self.role = role
+        self.client = None
+        self.db = None
         self.logger = logging.getLogger(__name__)
-        self._setup_mongodb_connection()
+        self._initialize_connection()
 
     def _get_password_from_file(self, password_file_path: str) -> str:
         """Read password from a file."""
@@ -46,8 +49,12 @@ class DatabaseManager:
             if not password:
                 raise ValueError("MongoDB password not provided")
 
-            # Construct MongoDB URI
-            mongodb_uri = f"mongodb://{mongodb_user}:{password}@{mongodb_host}:{mongodb_port}/{mongodb_db}?authSource=admin"
+            # URL encode username and password
+            encoded_user = quote_plus(mongodb_user)
+            encoded_password = quote_plus(password)
+
+            # Construct MongoDB URI with encoded credentials
+            mongodb_uri = f"mongodb://{encoded_user}:{encoded_password}@{mongodb_host}:{mongodb_port}/{mongodb_db}?authSource=admin"
 
             # Set up connection options
             options = {
@@ -196,5 +203,17 @@ class DatabaseManager:
         if hasattr(self, 'client'):
             self.client.close()
             self.logger.info("✅ MongoDB connection closed")
+
+    def check_connection(self):
+        """Check if the database connection is healthy."""
+        try:
+            if not self.client:
+                return False
+            # Execute a simple command to check connection
+            self.client.admin.command('ping')
+            return True
+        except Exception as e:
+            self.logger.error(f"Database connection check failed: {e}")
+            return False
 
 # ... existing code ... 
