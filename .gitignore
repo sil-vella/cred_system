@@ -126,6 +126,10 @@ secrets/
 *.keystore
 *.truststore
 
+# Configuration files with sensitive data
+values.json
+**/values.json
+
 # Vault credentials
 vault_creds/
 **/vault_creds/
@@ -143,6 +147,10 @@ k3s.yaml
 **/group_vars/**/vault.yml
 **/inventory.ini
 **/inventory/*.ini
+
+# Ansible logs and temporary files
+playbooks/*/logs/
+**/logs/
 
 # Temporary files
 *.tmp
