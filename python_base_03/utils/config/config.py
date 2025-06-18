@@ -14,6 +14,14 @@ class Config:
     FLASK_SERVICE_NAME = read_secret_file("flask_service_name") or os.getenv("FLASK_SERVICE_NAME", "flask")
     FLASK_PORT = int(read_secret_file("flask_port") or os.getenv("FLASK_PORT", "5000"))
     PYTHONPATH = read_secret_file("pythonpath") or os.getenv("PYTHONPATH", "/app")
+    FLASK_ENV = os.getenv("FLASK_ENV", "development")
+
+    # Vault Configuration
+    VAULT_TOKEN_FILE = read_secret_file("vault_token_file") or os.getenv("VAULT_TOKEN_FILE", "/vault/secrets/token")
+    DB_CREDS_FILE = read_secret_file("db_creds_file") or os.getenv("DB_CREDS_FILE", "/vault/secrets/flask-creds")
+    VAULT_ADDR = os.getenv("VAULT_ADDR", "http://vault-proxy:8200")
+    VAULT_AUTH_PATH = os.getenv("VAULT_AUTH_PATH", "auth/kubernetes")
+    VAULT_ROLE = os.getenv("VAULT_ROLE", "flask-app")
 
     # MongoDB Configuration
     MONGODB_SERVICE_NAME = read_secret_file("mongodb_service_name") or os.getenv("MONGODB_SERVICE_NAME", "mongodb")

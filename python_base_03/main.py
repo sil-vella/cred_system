@@ -50,5 +50,5 @@ def health_check():
 if __name__ == "__main__":
     # Use environment variables for host and port
     host = os.getenv('FLASK_HOST', '0.0.0.0')
-    port = int(os.getenv('FLASK_PORT', 5000))
+    port = int(os.getenv('FLASK_PORT', 5001))
     app_manager.run(app, host=host, port=port)

@@ -55,6 +55,12 @@ spec:
               value: "/vault/secrets/token"
             - name: DB_CREDS_FILE
               value: "/vault/secrets/flask-creds"
+            - name: VAULT_ADDR
+              value: "http://vault-proxy:8200"
+            - name: VAULT_AUTH_PATH
+              value: "auth/kubernetes"
+            - name: VAULT_ROLE
+              value: "flask-app"
             # Redis Configuration
             - name: REDIS_SERVICE_NAME
               value: "redis-master"

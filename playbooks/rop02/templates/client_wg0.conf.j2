@@ -1,9 +1,0 @@
-[Interface]
-PrivateKey = {{ wireguard_client_private_key }}
-Address = 10.0.0.2/24
-SaveConfig = true
-
-[Peer]
-PublicKey = {{ wireguard_server_public_key }}
-Endpoint = {{ vps_ip }}:51820
-AllowedIPs = {{ allowed_ips }} 
