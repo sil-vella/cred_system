@@ -270,7 +270,7 @@ def setup_multipass():
     for attempt in range(max_retries):
         try:
             logger.info(f"Attempt {attempt + 1} of {max_retries} to launch Multipass instance...")
-    run_command(f"multipass -vvv launch --name {vm_name} --memory 4G --disk 20G --cpus 2")
+            run_command(f"multipass -vvv launch --name {vm_name} --memory 4G --disk 20G --cpus 2")
             logger.info("Multipass instance launched successfully!")
             break
         except subprocess.CalledProcessError as e:
@@ -592,4 +592,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--recover":
         manual_multipass_recovery()
     else:
-    main() 
+        main() 

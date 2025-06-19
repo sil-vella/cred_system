@@ -34,13 +34,7 @@ menu_options = [
     "WireGuard setup",
     "VPN connection test",
     "Run: 05_setup_firewall.yml",
-    "Run: 06_harden_firewall.yml",
-    "Run: 07_vault_initial_setup.yml",
-    "Run: 08_store_vault_keys.yml",
-    "Run: 09_verify_prerequisites.yml",
-    "Run: 10_setup_unseal_scripts.yml",
-    "Run: 11_configure_vault_auth.yml",
-    "Run: 12_configure_flask_vault_access.yml"
+    "Run: 06_harden_firewall.yml"
 ]
 
 print("\nWhere do you want to start the setup?")
@@ -162,6 +156,12 @@ def check_multipass_auth():
             run_command(f"multipass delete {vm_name} --purge")
         except Exception as e4:
             logger.warning(f"Failed to delete/purge instance (may not exist): {e4}")
+        # Add additional cleanup for stuck processes
+        try:
+            subprocess.run(["pkill", "-f", "qemu-system-x86_64"], check=False)
+            time.sleep(2)
+        except Exception as e5:
+            logger.warning(f"Failed to kill QEMU processes: {e5}")
         logger.info("Recovery steps complete. Continuing script.")
         return
 
@@ -264,7 +264,7 @@ def setup_multipass():
     for attempt in range(max_retries):
         try:
             logger.info(f"Attempt {attempt + 1} of {max_retries} to launch Multipass instance...")
-    run_command(f"multipass -vvv launch --name {vm_name} --memory 4G --disk 20G --cpus 2")
+            run_command(f"multipass -vvv launch --name {vm_name} --memory 4G --disk 20G --cpus 2")
             logger.info("Multipass instance launched successfully!")
             break
         except subprocess.CalledProcessError as e:
@@ -288,22 +288,13 @@ def setup_multipass():
     # Copy SSH key to instance
     run_command(f"multipass -vvv transfer {Path.home() / '.ssh' / f'{vm_name}_key.pub'} {vm_name}:")
     
+    # Get initial user from inventory
+    initial_user = get_initial_user()
+    logger.info(f"Using initial user: {initial_user}")
+    
     # Set up SSH in instance - combine commands to ensure atomic operation
-    setup_ssh_cmd = f"""
-    sudo mkdir -p /home/ubuntu/.ssh && \
-    sudo cat /home/ubuntu/{vm_name}_key.pub > /home/ubuntu/.ssh/authorized_keys && \
-    sudo chown -R ubuntu:ubuntu /home/ubuntu/.ssh && \
-    sudo chmod 700 /home/ubuntu/.ssh && \
-    sudo chmod 600 /home/ubuntu/.ssh/authorized_keys && \
-    sudo sed -i "s/^#\?PubkeyAuthentication.*/PubkeyAuthentication yes/" /etc/ssh/sshd_config && \
-    sudo sed -i "s/^#\?PasswordAuthentication.*/PasswordAuthentication no/" /etc/ssh/sshd_config && \
-    sudo systemctl restart ssh && \
-    echo "=== Debug Info ===" && \
-    ls -la /home/ubuntu/.ssh && \
-    cat /home/ubuntu/.ssh/authorized_keys && \
-    grep -i "PubkeyAuthentication" /etc/ssh/sshd_config && \
-    grep -i "PasswordAuthentication" /etc/ssh/sshd_config
-    """
+    setup_ssh_cmd = f"""sudo mkdir -p /home/{initial_user}/.ssh && sudo cat /home/{initial_user}/{vm_name}_key.pub > /home/{initial_user}/.ssh/authorized_keys && sudo chown -R {initial_user}:{initial_user} /home/{initial_user}/.ssh && sudo chmod 700 /home/{initial_user}/.ssh && sudo chmod 600 /home/{initial_user}/.ssh/authorized_keys && sudo sed -i "s/^#\?PubkeyAuthentication.*/PubkeyAuthentication yes/" /etc/ssh/sshd_config && sudo sed -i "s/^#\?PasswordAuthentication.*/PasswordAuthentication no/" /etc/ssh/sshd_config && sudo systemctl restart ssh && echo "=== Debug Info ===" && ls -la /home/{initial_user}/.ssh && cat /home/{initial_user}/.ssh/authorized_keys && grep -i "PubkeyAuthentication" /etc/ssh/sshd_config && grep -i "PasswordAuthentication" /etc/ssh/sshd_config"""
+    logger.info(f"SSH setup command: {setup_ssh_cmd}")
     run_command(f"multipass exec {vm_name} -- bash -c '{setup_ssh_cmd}'", shell=True)
     
     # Start ssh-agent and add the key
@@ -313,7 +304,7 @@ def setup_multipass():
     
     # Test SSH connection directly
     logger.info("Testing SSH connection...")
-    test_ssh_cmd = f"ssh -v -o StrictHostKeyChecking=no ubuntu@{ip_address} 'echo SSH connection successful'"
+    test_ssh_cmd = f"ssh -v -o StrictHostKeyChecking=no {initial_user}@{ip_address} 'echo SSH connection successful'"
     run_command(test_ssh_cmd, shell=True)
 
 def update_values_json():
@@ -322,7 +313,7 @@ def update_values_json():
     values_path = Path(__file__).parent.parent / '00utils' / 'values.json'
     
     # Get public key
-    pub_key = run_command(f"cat {Path.home() / '.ssh/rop01_key.pub'}")
+    pub_key = run_command(f"cat {Path.home() / '.ssh' / f'{vm_name}_key.pub'}")
     
     # Get IP address
     ip_address = get_vm_ip()
@@ -332,8 +323,57 @@ def update_values_json():
         values = json.load(f)
     
     # Update SSH key and IP
-    values['nodes']['rop01']['ssh_public_key'] = pub_key
-    values['nodes']['rop01']['ip'] = ip_address
+    values['nodes'][vm_name]['ssh_public_key'] = pub_key
+    values['nodes'][vm_name]['ip'] = ip_address
+    
+    # Write updated content
+    with open(values_path, 'w') as f:
+        json.dump(values, f, indent=4)
+
+def get_initial_user():
+    """Get the initial user from values.json"""
+    values_path = Path(__file__).parent.parent / '00utils' / 'values.json'
+    
+    with open(values_path, 'r') as f:
+        values = json.load(f)
+    
+    # Get initial user for the current VM
+    initial_user = values['nodes'][vm_name]['user']['initial']
+    return initial_user
+
+def update_values_json_with_wg_key():
+    """Update values.json with new SSH key, IP, and WireGuard public key"""
+    logger.info("Updating values.json with WireGuard public key...")
+    values_path = Path(__file__).parent.parent / '00utils' / 'values.json'
+    
+    # Get public key
+    pub_key = run_command(f"cat {Path.home() / '.ssh' / f'{vm_name}_key.pub'}")
+    
+    # Get IP address
+    ip_address = get_vm_ip()
+    
+    # Try to get server WireGuard public key (optional, may not exist yet)
+    vm_ip = get_vm_ip()
+    initial_user = get_initial_user()
+    ssh_cmd = f"ssh {initial_user}@{vm_ip} -i {Path.home() / '.ssh' / f'{vm_name}_key'}"
+    try:
+        server_wg_pub_key = run_command(f"{ssh_cmd} 'sudo cat /etc/wireguard/server_public.key'", shell=True)
+        logger.info("WireGuard public key found and will be updated in values.json")
+    except subprocess.CalledProcessError:
+        logger.info("WireGuard public key not found yet (WireGuard not set up), skipping WireGuard key update")
+        server_wg_pub_key = None
+    
+    # Read and parse current values.json
+    with open(values_path, 'r') as f:
+        values = json.load(f)
+    
+    # Update SSH key and IP
+    values['nodes'][vm_name]['ssh_public_key'] = pub_key
+    values['nodes'][vm_name]['ip'] = ip_address
+    
+    # Update WireGuard public key only if it exists
+    if server_wg_pub_key:
+        values['wireguard']['nodes']['vault']['public_key'] = server_wg_pub_key
     
     # Write updated content
     with open(values_path, 'w') as f:
@@ -358,13 +398,13 @@ def setup_wireguard():
     wg_config = f"""[Interface]
 Address = 10.0.0.1/24
 ListenPort = 51820
-PrivateKey = {run_command(f"ssh rop01_user@{vm_ip} -i {Path.home() / '.ssh' / f'{vm_name}_key'} 'sudo cat /etc/wireguard/server_private.key'", shell=True)}
+PrivateKey = {run_command(f"ssh {vm_name}_user@{vm_ip} -i {Path.home() / '.ssh' / f'{vm_name}_key'} 'sudo cat /etc/wireguard/server_private.key'", shell=True)}
 
 [Peer]
 PublicKey = {client_pub_key}
 AllowedIPs = 10.0.0.2/32
 """
-    ssh_cmd = f"ssh rop01_user@{vm_ip} -i {Path.home() / '.ssh' / f'{vm_name}_key'}"
+    ssh_cmd = f"ssh {vm_name}_user@{vm_ip} -i {Path.home() / '.ssh' / f'{vm_name}_key'}"
     
     # First, ensure the config file exists and has proper format
     run_command(f"{ssh_cmd} 'sudo touch /etc/wireguard/wg0.conf'", shell=True)
@@ -400,6 +440,9 @@ PersistentKeepalive = 25
     # Restart local WireGuard
     run_command("sudo wg-quick down wg0 || true", shell=True)
     run_command("sudo wg-quick up wg0", shell=True)
+    
+    # Update values.json with WireGuard public key
+    update_values_json_with_wg_key()
 
 def test_vpn_connection():
     """Test VPN connection"""
@@ -493,7 +536,7 @@ def main():
             ("multipass_auth", check_multipass_auth),
             ("ssh_keys", check_ssh_keys),
             ("multipass_setup", setup_multipass),
-            ("update_values_json", update_values_json),
+            ("update_values_json", update_values_json_with_wg_key),
             ("playbook_00", lambda: run_playbook("00_ssh_for_new_user.yml")),
             ("playbook_01", lambda: run_playbook("01_configure_security.yml")),
             ("playbook_02", lambda: run_playbook("02_setup_k3s.yml")),
@@ -543,4 +586,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--recover":
         manual_multipass_recovery()
     else:
-    main() 
+        main() 
