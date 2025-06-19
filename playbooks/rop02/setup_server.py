@@ -258,37 +258,6 @@ def update_values_json():
     with open(values_path, 'w') as f:
         json.dump(values, f, indent=4)
 
-def update_values_json_with_wg_key():
-    """Update values.json with new SSH key, IP, and WireGuard public key"""
-    logger.info("Updating values.json with WireGuard public key...")
-    values_path = Path(__file__).parent.parent / '00utils' / 'values.json'
-    
-    # Get public key
-    pub_key = run_command(f"cat {Path.home() / '.ssh/rop01_key.pub'}")
-    
-    # Get IP address
-    ip_address = get_vm_ip()
-    
-    # Get server WireGuard public key
-    vm_ip = get_vm_ip()
-    ssh_cmd = f"ssh rop01_user@{vm_ip} -i {Path.home() / '.ssh' / f'{vm_name}_key'}"
-    server_wg_pub_key = run_command(f"{ssh_cmd} 'sudo cat /etc/wireguard/server_public.key'", shell=True)
-    
-    # Read and parse current values.json
-    with open(values_path, 'r') as f:
-        values = json.load(f)
-    
-    # Update SSH key and IP
-    values['nodes']['rop01']['ssh_public_key'] = pub_key
-    values['nodes']['rop01']['ip'] = ip_address
-    
-    # Update WireGuard public key
-    values['wireguard']['nodes']['vault']['public_key'] = server_wg_pub_key
-    
-    # Write updated content
-    with open(values_path, 'w') as f:
-        json.dump(values, f, indent=4)
-
 def run_playbook(playbook):
     sudo_password = get_sudo_password()
     logger.info(f"Running playbook: {playbook}")
@@ -350,9 +319,6 @@ PersistentKeepalive = 25
     # Restart local WireGuard
     run_command("sudo wg-quick down wg0 || true", shell=True)
     run_command("sudo wg-quick up wg0", shell=True)
-    
-    # Update values.json with WireGuard public key
-    update_values_json_with_wg_key()
 
 def test_vpn_connection():
     """Test VPN connection"""
@@ -392,7 +358,7 @@ def main():
             ("multipass_auth", check_multipass_auth),
             ("ssh_keys", check_ssh_keys),
             ("multipass_setup", setup_multipass),
-            ("update_values_json", update_values_json_with_wg_key),
+            ("update_values_json", update_values_json),
             ("playbook_00", lambda: run_playbook("00_ssh_for_new_user.yml")),
             ("playbook_01", lambda: run_playbook("01_configure_security.yml")),
             ("playbook_02", lambda: run_playbook("02_setup_k3s.yml")),
