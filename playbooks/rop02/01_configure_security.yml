@@ -1,6 +1,6 @@
 ---
 - name: Configure Vault server with security best practices
-  hosts: rop01_public
+  hosts: "{{ vm_name }}_public"
   become: true
   become_method: sudo
   tasks:

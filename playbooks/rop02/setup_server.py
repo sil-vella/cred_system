@@ -20,6 +20,12 @@ if not vm_name:
     print("Error: VM name cannot be empty")
     sys.exit(1)
 
+# Get sudo password once at the beginning
+sudo_password = input("Please enter your sudo password (will be used throughout the setup): ").strip()
+if not sudo_password:
+    print("Error: Sudo password cannot be empty")
+    sys.exit(1)
+
 # Menu for choosing starting point
 menu_options = [
     "Start from the very beginning (all steps)",
@@ -27,6 +33,7 @@ menu_options = [
     "SSH key check/generation",
     "Multipass instance setup",
     "Update values.json",
+    "Generate dynamic inventory",
     "Run: 00_ssh_for_new_user.yml",
     "Run: 01_configure_security.yml",
     "Run: 02_setup_k3s.yml",
@@ -34,7 +41,13 @@ menu_options = [
     "WireGuard setup",
     "VPN connection test",
     "Run: 05_setup_firewall.yml",
-    "Run: 06_harden_firewall.yml"
+    "Run: 06_harden_firewall.yml",
+    "Run: 07_vault_initial_setup.yml",
+    "Run: 08_store_vault_keys.yml",
+    "Run: 09_verify_prerequisites.yml",
+    "Run: 10_setup_unseal_scripts.yml",
+    "Run: 11_configure_vault_auth.yml",
+    "Run: 12_configure_flask_vault_access.yml"
 ]
 
 print("\nWhere do you want to start the setup?")
@@ -172,27 +185,30 @@ def get_vm_ip():
 
 def get_sudo_password():
     """Get sudo password from user"""
-    return input("Please enter your sudo password: ").strip()
+    global sudo_password
+    return sudo_password
 
-def run_command(cmd, shell=False, interactive=False):
+def run_command(cmd, shell=False, interactive=False, env=None):
     """Run a command and log its output"""
     logger.info(f"Running command: {cmd}")
     try:
         if interactive:
             # For interactive commands, run without capture_output
             # Add BatchMode=yes to SSH commands to prevent passphrase prompts
-            if 'ansible-playbook' in cmd:
+            if env is None:
                 env = os.environ.copy()
+            
+            if 'ansible-playbook' in cmd:
                 env['ANSIBLE_SSH_ARGS'] = '-o BatchMode=yes'
                 process = subprocess.run(cmd.split() if not shell else cmd, shell=shell, check=True, env=env)
             else:
-                process = subprocess.run(cmd.split() if not shell else cmd, shell=shell, check=True)
+                process = subprocess.run(cmd.split() if not shell else cmd, shell=shell, check=True, env=env)
             return ""
         else:
             if shell:
-                process = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True, timeout=180)
+                process = subprocess.run(cmd, shell=True, check=True, capture_output=True, text=True, timeout=180, env=env)
             else:
-                process = subprocess.run(cmd.split(), check=True, capture_output=True, text=True, timeout=180)
+                process = subprocess.run(cmd.split(), check=True, capture_output=True, text=True, timeout=180, env=env)
             logger.info(f"Command output: {process.stdout}")
             return process.stdout.strip()
     except subprocess.TimeoutExpired:
@@ -380,16 +396,21 @@ def update_values_json_with_wg_key():
         json.dump(values, f, indent=4)
 
 def run_playbook(playbook):
-    sudo_password = get_sudo_password()
     logger.info(f"Running playbook: {playbook}")
-    run_command(f"ansible-playbook -i inventory.ini {playbook} --ask-become-pass", interactive=True)
+    # Set environment variables for Ansible to use the stored password
+    env = os.environ.copy()
+    env['ANSIBLE_BECOME_PASSWORD'] = sudo_password
+    env['ANSIBLE_SSH_ARGS'] = '-o BatchMode=yes'
+    
+    # Run ansible-playbook with vm_name as extra variable
+    run_command(f"ansible-playbook -i inventory.ini {playbook} -e vm_name={vm_name}", interactive=True, env=env)
 
 def setup_wireguard():
     """Set up WireGuard configuration"""
     logger.info("Setting up WireGuard...")
     
     # Get client public key
-    client_pub_key = run_command("sudo cat /etc/wireguard/client_public.key")
+    client_pub_key = run_sudo_command("cat /etc/wireguard/client_public.key")
     
     # Get VM IP
     vm_ip = get_vm_ip()
@@ -420,7 +441,7 @@ AllowedIPs = 10.0.0.2/32
     # Update local WireGuard config
     server_pub_key = run_command(f"{ssh_cmd} 'sudo cat /etc/wireguard/server_public.key'", shell=True)
     local_config = f"""[Interface]
-PrivateKey = {run_command("sudo cat /etc/wireguard/client_private.key")}
+PrivateKey = {run_sudo_command("cat /etc/wireguard/client_private.key")}
 Address = 10.0.0.2/24
 DNS = 1.1.1.1
 
@@ -431,15 +452,15 @@ AllowedIPs = 10.0.0.0/24
 PersistentKeepalive = 25
 """
     # Ensure local config file exists and has proper permissions
-    run_command("sudo touch /etc/wireguard/wg0.conf", shell=True)
-    run_command("sudo chmod 600 /etc/wireguard/wg0.conf", shell=True)
+    run_sudo_command("touch /etc/wireguard/wg0.conf")
+    run_sudo_command("chmod 600 /etc/wireguard/wg0.conf")
     
     # Update local config
-    run_command(f"echo '{local_config}' | sudo tee /etc/wireguard/wg0.conf", shell=True)
+    run_sudo_tee(local_config, "/etc/wireguard/wg0.conf")
     
     # Restart local WireGuard
-    run_command("sudo wg-quick down wg0 || true", shell=True)
-    run_command("sudo wg-quick up wg0", shell=True)
+    run_sudo_command("wg-quick down wg0 || true")
+    run_sudo_command("wg-quick up wg0")
     
     # Update values.json with WireGuard public key
     update_values_json_with_wg_key()
@@ -451,9 +472,9 @@ def test_vpn_connection():
     # Remove old host key
     run_command("ssh-keygen -R 10.0.0.1")
     
-    # Test SSH connection
+    # Test SSH connection with automatic host key acceptance
     try:
-        run_command(f"ssh {vm_name}_user@10.0.0.1 -i {Path.home() / '.ssh' / f'{vm_name}_key'} 'echo \"VPN connection successful\"'", shell=True)
+        run_command(f"ssh -o StrictHostKeyChecking=no {vm_name}_user@10.0.0.1 -i {Path.home() / '.ssh' / f'{vm_name}_key'} 'echo \"VPN connection successful\"'", shell=True)
         logger.info("VPN connection test successful!")
     except subprocess.CalledProcessError as e:
         logger.error("VPN connection test failed!")
@@ -527,6 +548,72 @@ def manual_multipass_recovery():
     
     logger.info("Manual recovery complete. Try running your setup script again.")
 
+def generate_dynamic_inventory():
+    """Generate a dynamic inventory file based on vm_name"""
+    logger.info(f"Generating dynamic inventory for {vm_name}...")
+    
+    # Get the current playbook directory
+    playbook_dir = str(Path(__file__).parent.absolute())
+    
+    inventory_content = f"""[{vm_name}_initial]
+{vm_name}_initial_host ansible_host="{{{{ lookup('file', '../00utils/values.json') | from_json | json_query('nodes.{vm_name}.ip') }}}}" ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/{vm_name}_key ansible_ssh_common_args='-o BatchMode=yes -o StrictHostKeyChecking=no'
+
+[{vm_name}_public]
+{vm_name}_public_host ansible_host="{{{{ lookup('file', '../00utils/values.json') | from_json | json_query('nodes.{vm_name}.ip') }}}}" ansible_user="{{{{ lookup('file', '../00utils/values.json') | from_json | json_query('nodes.{vm_name}.user.public') }}}}" ansible_ssh_private_key_file=~/.ssh/{vm_name}_key ansible_ssh_common_args='-o BatchMode=yes -o StrictHostKeyChecking=no'
+
+[{vm_name}_private]
+{vm_name} ansible_host="{{{{ lookup('file', '../00utils/values.json') | from_json | json_query('wireguard.network.vault_server.ip') }}}}" ansible_user="{{{{ lookup('file', '../00utils/values.json') | from_json | json_query('nodes.{vm_name}.user.public') }}}}" ansible_ssh_private_key_file=~/.ssh/{vm_name}_key ansible_ssh_common_args='-o BatchMode=yes -o StrictHostKeyChecking=no'
+
+[all:vars]
+vm_name="{vm_name}"
+playbook_dir="{playbook_dir}"
+server_private_key="{{{{ lookup('file', 'wireguard/values/server_private.txt') | trim }}}}"
+server_port="{{{{ lookup('file', '../00utils/values.json') | from_json | json_query('wireguard.network.vault_server.listen_port') }}}}"
+new_user="{{{{ lookup('file', '../00utils/values.json') | from_json | json_query('nodes.{vm_name}.user.public') }}}}"
+initial_user="{{{{ lookup('file', '../00utils/values.json') | from_json | json_query('nodes.{vm_name}.user.initial') }}}}"
+
+# SSH Public Keys
+ssh_keys_{vm_name}="{{{{ lookup('file', '../00utils/values.json') | from_json | json_query('nodes.{vm_name}.ssh_public_key') }}}}"
+"""
+    
+    inventory_path = Path(__file__).parent / 'inventory.ini'
+    with open(inventory_path, 'w') as f:
+        f.write(inventory_content)
+    
+    logger.info(f"Dynamic inventory generated for {vm_name}")
+
+def run_sudo_command(cmd):
+    """Run a sudo command with the stored password"""
+    logger.info(f"Running sudo command: {cmd}")
+    try:
+        # Use echo to pipe the password to sudo
+        full_cmd = f"echo '{sudo_password}' | sudo -S {cmd}"
+        process = subprocess.run(full_cmd, shell=True, check=True, capture_output=True, text=True, timeout=180)
+        logger.info(f"Command output: {process.stdout}")
+        return process.stdout.strip()
+    except subprocess.TimeoutExpired:
+        logger.error(f"Command timed out after 180 seconds: {cmd}")
+        raise
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Command failed: {e.stderr}")
+        raise
+
+def run_sudo_tee(content, filepath):
+    """Write content to a file using sudo tee"""
+    logger.info(f"Writing content to {filepath} using sudo")
+    try:
+        # Use echo to pipe content to sudo tee
+        full_cmd = f"echo '{content}' | sudo -S tee {filepath} > /dev/null"
+        process = subprocess.run(full_cmd, shell=True, check=True, capture_output=True, text=True, timeout=180)
+        logger.info(f"Successfully wrote to {filepath}")
+        return process.stdout.strip()
+    except subprocess.TimeoutExpired:
+        logger.error(f"Command timed out after 180 seconds: tee to {filepath}")
+        raise
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Command failed: {e.stderr}")
+        raise
+
 def main():
     try:
         logger.info("Starting server setup process...")
@@ -537,6 +624,7 @@ def main():
             ("ssh_keys", check_ssh_keys),
             ("multipass_setup", setup_multipass),
             ("update_values_json", update_values_json_with_wg_key),
+            ("generate_inventory", generate_dynamic_inventory),
             ("playbook_00", lambda: run_playbook("00_ssh_for_new_user.yml")),
             ("playbook_01", lambda: run_playbook("01_configure_security.yml")),
             ("playbook_02", lambda: run_playbook("02_setup_k3s.yml")),

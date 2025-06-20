@@ -1,6 +1,6 @@
 ---
-- name: Configure WireGuard on server
-  hosts: rop01_public
+- name: Setup and Configure WireGuard
+  hosts: "{{ vm_name }}_public"
   become: true
   become_user: root
   tasks:

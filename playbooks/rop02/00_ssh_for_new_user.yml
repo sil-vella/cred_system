@@ -1,40 +1,49 @@
 ---
-- name: Setup SSH Keys and User on remote
-  hosts: rop01_initial
+- name: SSH Setup for New User
+  hosts: "{{ vm_name }}_initial"
   become: true
   tasks:
-    - name: Create user if not exists
+    - name: Create new user
       user:
         name: "{{ new_user }}"
         shell: /bin/bash
         create_home: yes
         state: present
-        groups: sudo
-        append: yes
 
-    - name: Create .ssh directory
+    - name: Create SSH directory for new user
       file:
         path: "/home/{{ new_user }}/.ssh"
         state: directory
-        mode: '0700'
         owner: "{{ new_user }}"
         group: "{{ new_user }}"
+        mode: '0700'
 
-    - name: Add SSH public key
+    - name: Create authorized_keys file
+      file:
+        path: "/home/{{ new_user }}/.ssh/authorized_keys"
+        state: touch
+        owner: "{{ new_user }}"
+        group: "{{ new_user }}"
+        mode: '0600'
+
+    - name: Add SSH key for new user
       authorized_key:
         user: "{{ new_user }}"
-        state: present
-        key: "{{ ssh_keys_rop01 }}"
-        key_options: 'no-port-forwarding,no-agent-forwarding,no-X11-forwarding'
+        key: "{{ lookup('file', '~/.ssh/' + vm_name + '_key.pub') }}"
 
-    - name: Set up sudo access for new user
+    - name: Add new user to sudo group
+      user:
+        name: "{{ new_user }}"
+        groups: sudo
+        append: yes
+
+    - name: Configure sudoers for new user
       lineinfile:
-        path: "/etc/sudoers.d/{{ new_user }}"
-        line: "{{ new_user }} ALL=(ALL) NOPASSWD: ALL"
-        create: yes
-        mode: '0440'
+        path: /etc/sudoers
+        line: "{{ new_user }} ALL=(ALL) NOPASSWD:ALL"
+        state: present
         validate: 'visudo -cf %s'
 
-    - name: Display SSH setup complete message
+    - name: Display completion message
       debug:
-        msg: "SSH key setup complete. You can now SSH as {{ new_user }} using the rop01_key" 
+        msg: "SSH key setup complete. You can now SSH as {{ new_user }} using the {{ vm_name }}_key" 

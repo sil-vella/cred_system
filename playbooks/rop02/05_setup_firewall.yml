@@ -1,6 +1,6 @@
 ---
 - name: Initial Firewall Setup
-  hosts: rop01_private
+  hosts: "{{ vm_name }}_private"
   become: true
   tasks:
     - name: Allow localhost traffic
