@@ -30,14 +30,11 @@ if not sudo_password:
 menu_options = [
     "Start from the very beginning (all steps)",
     "Run: 01_configure_security.yml",
-    "Run: 02_setup_k3s.yml",
-    "Run: 05_setup_firewall.yml",
-    "Run: 07_vault_initial_setup.yml",
-    "Run: 08_store_vault_keys.yml",
-    "Run: 09_verify_prerequisites.yml",
-    "Run: 10_setup_unseal_scripts.yml",
-    "Run: 11_configure_vault_auth.yml",
-    "Run: 12_configure_flask_vault_access.yml"
+    "Run: 03_setup_k3s.yml",
+    "Run: 04_setup_flask_namespace.yml",
+    "Run: 05_deploy_vault_proxy.yml",
+    "Run: 06_setup_vault_approle_creds.yml",
+    "Run: 07_deploy_sample_flask_app.yml"
 ]
 
 print("\nWhere do you want to start the setup?")
@@ -113,14 +110,11 @@ def main():
         # Step index mapping - aligned with menu options
         steps = [
             ("playbook_01", lambda: run_playbook("01_configure_security.yml")),
-            ("playbook_02", lambda: run_playbook("02_setup_k3s.yml")),
-            ("playbook_05", lambda: run_playbook("05_setup_firewall.yml")),
-            ("playbook_07", lambda: run_playbook("07_vault_initial_setup.yml")),
-            ("playbook_08", lambda: run_playbook("08_store_vault_keys.yml")),
-            ("playbook_09", lambda: run_playbook("09_verify_prerequisites.yml")),
-            ("playbook_10", lambda: run_playbook("10_setup_unseal_scripts.yml")),
-            ("playbook_11", lambda: run_playbook("11_configure_vault_auth.yml")),
-            ("playbook_12", lambda: run_playbook("12_configure_flask_vault_access.yml")),
+            ("playbook_03", lambda: run_playbook("03_setup_k3s.yml")),
+            ("playbook_04", lambda: run_playbook("04_setup_flask_namespace.yml")),
+            ("playbook_05", lambda: run_playbook("05_deploy_vault_proxy.yml")),
+            ("playbook_06", lambda: run_playbook("06_setup_vault_approle_creds.yml")),
+            ("playbook_07", lambda: run_playbook("07_deploy_sample_flask_app.yml"))
         ]
         
         # Map menu choice to step index

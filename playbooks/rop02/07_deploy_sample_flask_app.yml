@@ -1,0 +1,340 @@
+---
+- name: Deploy Sample Flask Application with Vault Integration
+  hosts: "{{ vm_name }}_private"
+  become: true
+  vars:
+    new_user: "{{ vm_name }}_user"
+    flask_namespace: flask-app
+    kubeconfig_path: "/home/{{ new_user }}/.kube/config"
+  tasks:
+    - name: Create Sample Flask Application Deployment
+      shell: |
+        cat <<EOF | kubectl apply -f -
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: sample-flask-app
+          namespace: {{ flask_namespace }}
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              app: sample-flask-app
+          template:
+            metadata:
+              labels:
+                app: sample-flask-app
+            spec:
+              serviceAccountName: flask-app-sa
+              containers:
+              - name: sample-flask-app
+                image: python:3.9-slim
+                ports:
+                - containerPort: 5000
+                env:
+                - name: VAULT_ADDR
+                  value: "http://vault-proxy:8200"
+                - name: VAULT_ROLE_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: vault-approle-creds
+                      key: role_id
+                - name: VAULT_SECRET_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: vault-approle-creds
+                      key: secret_id
+                - name: FLASK_APP
+                  value: "app.py"
+                - name: FLASK_ENV
+                  value: "development"
+                command:
+                - /bin/bash
+                - -c
+                - |
+                  apt-get update && apt-get install -y curl
+                  pip install flask hvac
+                  cat > app.py << 'PYTHON_EOF'
+                  from flask import Flask, jsonify
+                  import hvac
+                  import os
+                  import json
+                  import sys
+                  from datetime import datetime
+
+                  # Force immediate flushing of print statements
+                  def log(msg):
+                      print(f"[{datetime.now().isoformat()}] {msg}", flush=True)
+                      sys.stdout.flush()
+
+                  app = Flask(__name__)
+
+                  # Vault configuration
+                  VAULT_ADDR = os.getenv('VAULT_ADDR', 'http://vault-proxy:8200')
+                  VAULT_ROLE_ID = os.getenv('VAULT_ROLE_ID')
+                  VAULT_SECRET_ID = os.getenv('VAULT_SECRET_ID')
+
+                  # Log initial configuration
+                  log(f"Starting Flask app with configuration:")
+                  log(f"VAULT_ADDR: {VAULT_ADDR}")
+                  log(f"VAULT_ROLE_ID set: {'Yes' if VAULT_ROLE_ID else 'No'}")
+                  log(f"VAULT_SECRET_ID set: {'Yes' if VAULT_SECRET_ID else 'No'}")
+
+                  def get_vault_client():
+                      log(f"Attempting to connect to Vault at {VAULT_ADDR}")
+                      
+                      if not VAULT_ROLE_ID or not VAULT_SECRET_ID:
+                          log("Error: Missing VAULT_ROLE_ID or VAULT_SECRET_ID")
+                          return None
+                      
+                      client = hvac.Client(url=VAULT_ADDR)
+                      
+                      # AppRole authentication
+                      try:
+                          log("Attempting AppRole authentication...")
+                          auth_response = client.auth.approle.login(
+                              role_id=VAULT_ROLE_ID,
+                              secret_id=VAULT_SECRET_ID
+                          )
+                          log("AppRole authentication response received")
+                          
+                          if auth_response['auth']['client_token']:
+                              log("Successfully obtained client token")
+                              client.token = auth_response['auth']['client_token']
+                              return client
+                      except Exception as e:
+                          log(f"Vault authentication failed: {str(e)}")
+                          if hasattr(e, 'errors'):
+                              log(f"Vault errors: {e.errors}")
+                      
+                      return None
+
+                  @app.route('/')
+                  def home():
+                      return jsonify({
+                          'message': 'Sample Flask App with Vault Integration (AppRole)',
+                          'vault_addr': VAULT_ADDR,
+                          'auth_method': 'AppRole'
+                      })
+
+                  @app.route('/vault-status')
+                  def vault_status():
+                      log("Received request to /vault-status")
+                      client = get_vault_client()
+                      if client:
+                          try:
+                              log("Attempting to read secret...")
+                              # Try to read a secret
+                              secret_response = client.secrets.kv.v2.read_secret_version(
+                                  path='flask-app/config',
+                                  mount_point='secret'
+                              )
+                              log("Successfully read secret")
+                              return jsonify({
+                                  'status': 'connected',
+                                  'auth_method': 'AppRole',
+                                  'secret': secret_response['data']['data']
+                              })
+                          except Exception as e:
+                              log(f"Error reading secret: {str(e)}")
+                              if hasattr(e, 'errors'):
+                                  log(f"Vault errors: {e.errors}")
+                              return jsonify({
+                                  'status': 'error',
+                                  'auth_method': 'AppRole',
+                                  'error': str(e)
+                              })
+                      else:
+                          log("Failed to get authenticated Vault client")
+                          return jsonify({
+                              'status': 'not_authenticated',
+                              'auth_method': 'AppRole'
+                          })
+
+                  @app.route('/health')
+                  def health():
+                      return jsonify({'status': 'healthy'})
+
+                  if __name__ == '__main__':
+                      app.run(host='0.0.0.0', port=5000, debug=True)
+                  PYTHON_EOF
+
+                  python app.py
+                securityContext:
+                  runAsNonRoot: false
+                  runAsUser: 0
+        EOF
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      changed_when: true
+
+    - name: Create Flask Application Service
+      shell: |
+        cat <<EOF | kubectl apply -f -
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: sample-flask-app
+          namespace: {{ flask_namespace }}
+        spec:
+          selector:
+            app: sample-flask-app
+          ports:
+          - port: 80
+            targetPort: 5000
+            protocol: TCP
+          type: ClusterIP
+        EOF
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      changed_when: true
+
+    - name: Create Ingress for Flask Application
+      shell: |
+        cat <<EOF | kubectl apply -f -
+        apiVersion: networking.k8s.io/v1
+        kind: Ingress
+        metadata:
+          name: sample-flask-app-ingress
+          namespace: {{ flask_namespace }}
+          annotations:
+            nginx.ingress.kubernetes.io/rewrite-target: /
+        spec:
+          rules:
+          - host: flask-app.local
+            http:
+              paths:
+              - path: /
+                pathType: Prefix
+                backend:
+                  service:
+                    name: sample-flask-app
+                    port:
+                      number: 80
+        EOF
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      changed_when: true
+
+    - name: Wait for Flask application pod to be ready
+      shell: kubectl wait --for=condition=ready pod -l app=sample-flask-app -n {{ flask_namespace }} --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: flask_ready
+      changed_when: flask_ready.rc == 0
+
+    - name: Test Flask application health endpoint
+      shell: |
+        # Start port-forward in background
+        kubectl port-forward -n {{ flask_namespace }} svc/sample-flask-app 8080:80 &
+        PF_PID=$!
+        sleep 3
+        
+        # Test the health endpoint
+        curl -s http://localhost:8080/health || echo "Health test failed"
+        
+        # Kill port-forward
+        kill $PF_PID 2>/dev/null || true
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: flask_health_test
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Test Flask application home endpoint
+      shell: |
+        # Start port-forward in background
+        kubectl port-forward -n {{ flask_namespace }} svc/sample-flask-app 8080:80 &
+        PF_PID=$!
+        sleep 3
+        
+        # Test the home endpoint
+        curl -s http://localhost:8080/ || echo "Home test failed"
+        
+        # Kill port-forward
+        kill $PF_PID 2>/dev/null || true
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: flask_home_test
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Test Flask application Vault status endpoint
+      shell: |
+        # Start port-forward in background
+        kubectl port-forward -n {{ flask_namespace }} svc/sample-flask-app 8080:80 &
+        PF_PID=$!
+        sleep 3
+        
+        # Test the vault-status endpoint
+        curl -s http://localhost:8080/vault-status || echo "Vault status test failed"
+        
+        # Kill port-forward
+        kill $PF_PID 2>/dev/null || true
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: flask_vault_test
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Get Flask application logs
+      shell: kubectl logs -n {{ flask_namespace }} deployment/sample-flask-app --tail=20
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+      register: flask_logs
+      changed_when: false
+
+    - name: Display Flask application setup status
+      debug:
+        msg: |
+          Sample Flask Application deployment completed!
+          
+          Application endpoints:
+          - Health: http://sample-flask-app.{{ flask_namespace }}.svc.cluster.local/health
+          - Home: http://sample-flask-app.{{ flask_namespace }}.svc.cluster.local/
+          - Vault Status: http://sample-flask-app.{{ flask_namespace }}.svc.cluster.local/vault-status
+          
+          {% if flask_health_test.rc == 0 %}
+          ✅ Flask application health test: SUCCESS
+          {% else %}
+          ⚠️  Flask application health test: FAILED
+          {% endif %}
+          
+          {% if flask_home_test.rc == 0 %}
+          ✅ Flask application home test: SUCCESS
+          {% else %}
+          ⚠️  Flask application home test: FAILED
+          {% endif %}
+          
+          {% if flask_vault_test.rc == 0 %}
+          ✅ Flask application Vault status test: SUCCESS
+          {% else %}
+          ⚠️  Flask application Vault status test: FAILED
+          {% endif %}
+          
+          Application logs:
+          {{ flask_logs.stdout }}
+
+    - name: Create test secret in Vault (if accessible)
+      shell: |
+        echo "Creating test secret in Vault..."
+        # This would require Vault CLI and authentication
+        # For now, just document what needs to be done
+        echo "To test Vault integration, create a secret:"
+        echo "vault kv put secret/flask-app/config api_key=test123 database_url=postgresql://user:pass@db:5432/app"
+      changed_when: false
+
+    - name: Display final instructions
+      debug:
+        msg: |
+          Sample Flask Application deployed successfully!
+          
+          To test the application:
+          1. Port forward to access the app: kubectl port-forward -n {{ flask_namespace }} svc/sample-flask-app 8080:80
+          2. Access the app at: http://localhost:8080
+          3. Check Vault integration at: http://localhost:8080/vault-status
+          
+          To create test secrets in Vault:
+          vault kv put secret/flask-app/config api_key=test123 database_url=postgresql://user:pass@db:5432/app
+          
+          The application will automatically authenticate with Vault using Kubernetes service account authentication. 

@@ -1,5 +1,5 @@
 ---
-- name: Configure Vault server with security best practices
+- name: Configure Flask server with security best practices
   hosts: "{{ vm_name }}_private"
   become: true
   become_method: sudo
@@ -124,6 +124,8 @@
           - software-properties-common
           - rsync
           - iptables-persistent
+          - wireguard
+          - wireguard-tools
         state: present
         update_cache: yes
 
@@ -144,45 +146,6 @@
       changed_when: false
       ignore_errors: true
 
-    - name: Create systemd service directory for Vault port-forwarding
-      file:
-        path: /etc/systemd/system
-        state: directory
-        mode: '0755'
-
-    - name: Create Vault port-forwarding systemd service
-      copy:
-        content: |
-          [Unit]
-          Description=Vault Kubernetes Port Forward
-          After=network.target k3s.service
-          Wants=k3s.service
-
-          [Service]
-          Type=simple
-          User=root
-          ExecStart=/usr/local/bin/kubectl port-forward -n vault-system svc/vault 8200:8200 --address 0.0.0.0
-          Restart=always
-          RestartSec=10
-          StandardOutput=journal
-          StandardError=journal
-
-          [Install]
-          WantedBy=multi-user.target
-        dest: /etc/systemd/system/vault-port-forward.service
-        mode: '0644'
-
-    - name: Reload systemd daemon
-      systemd:
-        daemon_reload: yes
-
-    - name: Enable and start Vault port-forwarding service
-      systemd:
-        name: vault-port-forward
-        state: started
-        enabled: yes
-
-    - name: Display port-forwarding status
+    - name: Display security configuration status
       debug:
-        msg: "Vault port-forwarding service created and started. Vault is now permanently accessible at http://10.0.0.1:8200"
-
+        msg: "Security configuration completed. WireGuard tools installed for VPN connectivity." 
