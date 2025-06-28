@@ -13,7 +13,12 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from datetime import datetime
 import logging
-from redis.retry import ExponentialBackoff, Retry
+try:
+    from redis.retry import ExponentialBackoff, Retry
+except ImportError:
+    # Fallback for older redis versions
+    ExponentialBackoff = None
+    Retry = None
 
 # Helper to read secrets from files
 def read_secret_file(path: str) -> Optional[str]:
@@ -83,8 +88,11 @@ class RedisManager:
                 'retry_on_timeout': Config.REDIS_RETRY_ON_TIMEOUT,
                 'max_connections': Config.REDIS_MAX_CONNECTIONS,
                 'health_check_interval': 30,  # Check connection health every 30 seconds
-                'retry': Retry(ExponentialBackoff(), Config.REDIS_MAX_RETRIES)
             }
+            
+            # Add retry settings only if available
+            if Retry is not None and ExponentialBackoff is not None:
+                pool_settings['retry'] = Retry(ExponentialBackoff(), Config.REDIS_MAX_RETRIES)
             
             # Add SSL settings only if SSL is enabled
             if Config.REDIS_USE_SSL:

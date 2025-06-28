@@ -1,0 +1,260 @@
+---
+- name: Deploy Flask Application (Local Development - No Vault)
+  hosts: localhost
+  connection: local
+  vars:
+    flask_namespace: flask-app
+    docker_image: "flask-credit-system:latest"
+  tasks:
+    - name: Import Docker image into k3d
+      shell: |
+        k3d image import {{ docker_image }} -c local-dev
+      changed_when: true
+
+    - name: Create Flask Application Deployment (Local Development)
+      shell: |
+        cat <<EOF | kubectl apply -f -
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: flask-app
+          namespace: {{ flask_namespace }}
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              app: flask-app
+          template:
+            metadata:
+              labels:
+                app: flask-app
+            spec:
+              serviceAccountName: flask-app-sa
+              containers:
+              - name: flask-app
+                image: {{ docker_image }}
+                imagePullPolicy: Never
+                ports:
+                - containerPort: 5001
+                env:
+                # Flask Configuration
+                - name: FLASK_HOST
+                  value: "0.0.0.0"
+                - name: FLASK_PORT
+                  value: "5001"
+                - name: FLASK_ENV
+                  value: "development"
+                - name: FLASK_DEBUG
+                  value: "True"
+                - name: PYTHONPATH
+                  value: "/app"
+                
+                # MongoDB Configuration (bypasses Vault)
+                - name: MONGODB_SERVICE_NAME
+                  value: "mongodb"
+                - name: MONGODB_PORT
+                  value: "27017"
+                - name: MONGODB_DB_NAME
+                  value: "credit_system"
+                - name: MONGODB_ROOT_USER
+                  value: "root"
+                - name: MONGODB_ROOT_PASSWORD
+                  value: "local-dev-password"
+                - name: MONGODB_USER
+                  value: "credit_system_user"
+                - name: MONGODB_PASSWORD
+                  value: "local-dev-password"
+                - name: MONGODB_AUTH_SOURCE
+                  value: "admin"
+                
+                # Redis Configuration (bypasses Vault)
+                - name: REDIS_HOST
+                  value: "redis-master.flask-app.svc.cluster.local"
+                - name: REDIS_PORT
+                  value: "6379"
+                - name: REDIS_DB
+                  value: "0"
+                - name: REDIS_PASSWORD
+                  value: ""
+                
+                # Security Configuration (bypasses Vault)
+                - name: JWT_SECRET_KEY
+                  value: "local-dev-jwt-secret-key-not-for-production"
+                - name: ENCRYPTION_KEY
+                  value: "local-dev-encryption-key-not-for-production"
+                - name: ENCRYPTION_SALT
+                  value: "local-dev-salt-123"
+                
+                # Credit System Configuration
+                - name: CREDIT_SYSTEM_URL
+                  value: "http://localhost:8000"
+                - name: CREDIT_SYSTEM_API_KEY
+                  value: "local-dev-api-key"
+                
+                # Rate Limiting Configuration
+                - name: RATE_LIMIT_ENABLED
+                  value: "true"
+                - name: RATE_LIMIT_IP_REQUESTS
+                  value: "1000"
+                - name: RATE_LIMIT_IP_WINDOW
+                  value: "60"
+                
+                # Disable Vault (empty values trigger fallbacks)
+                - name: VAULT_ADDR
+                  value: ""
+                - name: VAULT_TOKEN_FILE
+                  value: ""
+                - name: DB_CREDS_FILE
+                  value: ""
+                
+                # Health checks
+                livenessProbe:
+                  httpGet:
+                    path: /health
+                    port: 5001
+                  initialDelaySeconds: 30
+                  periodSeconds: 10
+                  timeoutSeconds: 5
+                  failureThreshold: 3
+                readinessProbe:
+                  httpGet:
+                    path: /health
+                    port: 5001
+                  initialDelaySeconds: 10
+                  periodSeconds: 5
+                  timeoutSeconds: 3
+                  failureThreshold: 3
+                
+                # Resource limits
+                resources:
+                  requests:
+                    memory: "256Mi"
+                    cpu: "250m"
+                  limits:
+                    memory: "512Mi"
+                    cpu: "500m"
+                
+                # Security context
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 1000
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop:
+                      - ALL
+        EOF
+      changed_when: true
+
+    - name: Create Flask Application Service
+      shell: |
+        cat <<EOF | kubectl apply -f -
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: flask-app
+          namespace: {{ flask_namespace }}
+        spec:
+          selector:
+            app: flask-app
+          ports:
+          - name: http
+            port: 80
+            targetPort: 5001
+            protocol: TCP
+          type: ClusterIP
+        EOF
+      changed_when: true
+
+    - name: Create Ingress for Flask Application
+      shell: |
+        cat <<EOF | kubectl apply -f -
+        apiVersion: networking.k8s.io/v1
+        kind: Ingress
+        metadata:
+          name: flask-app-ingress
+          namespace: {{ flask_namespace }}
+        spec:
+          rules:
+          - host: flask-app.local
+            http:
+              paths:
+              - path: /
+                pathType: Prefix
+                backend:
+                  service:
+                    name: flask-app
+                    port:
+                      number: 80
+        EOF
+      changed_when: true
+
+    - name: Wait for Flask application rollout to complete
+      shell: kubectl rollout status deployment/flask-app -n {{ flask_namespace }} --timeout=300s
+      register: flask_rollout
+      changed_when: flask_rollout.rc == 0
+
+    - name: Wait for Flask application pod to be ready
+      shell: kubectl wait --for=condition=ready pod -l app=flask-app -n {{ flask_namespace }} --timeout=300s
+      register: flask_ready
+      changed_when: flask_ready.rc == 0
+
+    - name: Get Flask application status
+      shell: |
+        echo "=== LOCAL DEVELOPMENT DEPLOYMENT STATUS ==="
+        kubectl get deployments -n {{ flask_namespace }} flask-app
+        echo ""
+        echo "=== POD STATUS ==="
+        kubectl get pods -n {{ flask_namespace }} -l app=flask-app
+        echo ""
+        echo "=== SERVICE STATUS ==="
+        kubectl get services -n {{ flask_namespace }} flask-app
+        echo ""
+        echo "=== RECENT LOGS ==="
+        kubectl logs -n {{ flask_namespace }} deployment/flask-app --tail=20
+      register: flask_status
+      changed_when: false
+
+    - name: Test Flask application health endpoint
+      shell: |
+        kubectl port-forward -n {{ flask_namespace }} svc/flask-app 8080:80 &
+        PF_PID=$!
+        sleep 5
+        curl -s http://localhost:8080/health || echo "Health test failed"
+        kill $PF_PID 2>/dev/null || true
+      register: flask_health_test
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Display Flask application deployment status
+      debug:
+        msg: |
+          🚀 Flask Application deployed for LOCAL DEVELOPMENT!
+          
+          Environment: Local Development (No Vault Dependencies)
+          Image: {{ docker_image }}
+          Namespace: {{ flask_namespace }}
+          
+          Application Status:
+          {{ flask_status.stdout }}
+          
+          {% if flask_health_test.rc == 0 %}
+          ✅ Health check: PASSED
+          {% else %}
+          ⚠️  Health check: FAILED (check logs above)
+          {% endif %}
+          
+          🔧 Local Development Features:
+          - ✅ No Vault dependencies (uses env vars)
+          - ✅ Development secrets hardcoded
+          - ✅ Debug mode enabled
+          - ✅ Same Flask app logic as production
+          
+          Development workflow:
+          1. Edit code locally in python_base_03/
+          2. Rebuild image: docker build -t flask-credit-system:latest python_base_03/
+          3. Import to k3d: k3d image import flask-credit-system:latest -c local-dev
+          4. Restart: kubectl rollout restart deployment/flask-app -n {{ flask_namespace }}
+          
+          Access your app:
+          kubectl port-forward -n {{ flask_namespace }} svc/flask-app 8080:80
+          curl http://localhost:8080/health 

@@ -25,7 +25,7 @@ class DatabaseManager:
         self.client = None
         self.db = None
         self.logger = logging.getLogger(__name__)
-        self._initialize_connection()
+        self._setup_mongodb_connection()
 
     def _get_password_from_file(self, password_file_path: str) -> str:
         """Read password from a file."""

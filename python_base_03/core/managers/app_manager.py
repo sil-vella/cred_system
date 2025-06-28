@@ -13,6 +13,8 @@ from redis.exceptions import RedisError
 from core.monitoring.metrics_collector import metrics_collector
 import logging
 from apscheduler.schedulers.background import BackgroundScheduler
+from core.managers.database_manager import DatabaseManager
+from core.managers.redis_manager import RedisManager
 
 
 class AppManager:
@@ -73,6 +75,11 @@ class AppManager:
         # Initialize scheduler
         self.scheduler = BackgroundScheduler()
         self.scheduler.start()
+
+        # Initialize database and Redis managers
+        self.db_manager = DatabaseManager(role="read_write")
+        self.redis_manager = RedisManager()
+        custom_log("✅ Database and Redis managers initialized")
 
         # Initialize services
         self.services_manager.initialize_services()

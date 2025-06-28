@@ -159,3 +159,8 @@ playbooks/*/logs/
 *.temp
 *.swp
 *~
+
+# VPS Backup files - don't commit actual backups
+backup/backups/
+*.tar.gz
+*.log

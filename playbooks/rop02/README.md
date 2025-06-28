@@ -54,7 +54,8 @@ python3 setup_server.py
 4. Run: 04_setup_flask_namespace.yml
 5. Run: 05_deploy_vault_proxy.yml
 6. Run: 06_setup_vault_approle_creds.yml
-7. Run: 07_deploy_sample_flask_app.yml
+7. Run: 07_deploy_flask_docker.yml (Docker-based with volume mounts)
+8. Run: 08_update_flask_docker.yml (Quick updates for development)
 
 ## Manual Playbook Execution Order
 
@@ -102,11 +103,42 @@ ansible-playbook -i inventory.ini 06_setup_vault_approle_creds.yml -e vm_name=ro
 
 ### 6. Flask Application Deployment
 ```bash
-ansible-playbook -i inventory.ini 07_deploy_sample_flask_app.yml -e vm_name=rop02
+ansible-playbook -i inventory.ini 07_deploy_flask_docker.yml -e vm_name=rop02
 ```
+- Builds custom Docker image with pre-installed dependencies
 - Deploys Flask application with AppRole authentication
-- Demonstrates Vault integration with secret retrieval
-- Creates service and ingress
+- Configures volume mounts for live development
+- Sets up health checks and ingress
+- **Startup time**: ~30 seconds (vs 5-10 minutes with ConfigMap)
+
+### 7. Quick Updates (Development)
+```bash
+ansible-playbook -i inventory.ini 08_update_flask_docker.yml -e vm_name=rop02
+```
+- Fast updates for code changes
+- Rolling deployment with zero downtime
+- Uses existing Docker image with volume mounts
+
+### Development Workflow
+
+#### For Code Changes (No Redeployment Needed):
+```bash
+# Edit files locally, then copy to VPS
+scp python_base_03/core/managers/some_file.py rop02:/home/rop02_user/python_base_03/core/managers/
+# Changes are immediately live in the pod!
+```
+
+#### For Configuration Changes:
+```bash
+# Redeploy to update environment variables, resources, etc.
+ansible-playbook -i inventory.ini 07_deploy_flask_docker.yml -e vm_name=rop02
+```
+
+#### Infrastructure Components:
+- **Vault proxy**: `vault-proxy.flask-app.svc.cluster.local:8200`
+- **Redis**: Simple deployment (no persistent storage)
+- **MongoDB**: Simple deployment with authentication
+- **Flask app**: Custom Docker image with volume mounts
 
 ## Configuration Details
 
@@ -155,30 +187,47 @@ curl -H "X-Vault-Token: $TOKEN" http://10.0.0.1:8200/v1/secret/data/flask-app/co
 
 ### 3. Test Flask Application
 ```bash
-# Test directly from within the cluster
-kubectl exec -n flask-app deployment/sample-flask-app -- curl -s http://localhost:5000/vault-status
+# Test health endpoint
+kubectl exec -n flask-app deployment/flask-app -- curl -s http://localhost:5001/health
 
 # Expected response:
 {
-  "auth_method": "AppRole",
-  "secret": {
-    "api_key": "test123",
-    "app_name": "flask-credit-system",
-    "database_url": "postgresql://user:pass@db:5432/app"
-  },
-  "status": "connected"
+  "status": "healthy"
 }
+
+# Test main endpoint
+kubectl exec -n flask-app deployment/flask-app -- curl -s http://localhost:5001/
+
+# Expected response:
+App / route.
 ```
 
-### 4. Test via Port Forward (Optional)
+### 4. Test External Access
 ```bash
-# Port forward to Flask app
-kubectl port-forward -n flask-app svc/sample-flask-app 8081:80
+# Test via ingress (requires host header)
+curl -H 'Host: flask-app.local' http://10.0.0.3/
 
-# Test endpoints
-curl http://localhost:8081/health
-curl http://localhost:8081/vault-status
-curl http://localhost:8081/
+# Port forward for local testing
+kubectl port-forward -n flask-app svc/flask-app 8080:80
+curl http://localhost:8080/health
+curl http://localhost:8080/
+```
+
+### 5. Test Infrastructure Components
+```bash
+# Test Redis connectivity
+kubectl exec -n flask-app deployment/flask-app -- python3 -c "
+import socket
+socket.create_connection(('redis-master', 6379), timeout=5)
+print('Redis: Connected successfully')
+"
+
+# Test MongoDB connectivity  
+kubectl exec -n flask-app deployment/flask-app -- python3 -c "
+import socket
+socket.create_connection(('mongodb', 27017), timeout=5)
+print('MongoDB: Connected successfully')
+"
 ```
 
 ## AppRole Credentials Management
@@ -225,10 +274,39 @@ curl -X POST -d '{"role_id":"'$ROLE_ID'"}' http://10.0.0.1:8200/v1/auth/approle/
 kubectl get pods -n flask-app
 
 # Check Flask app logs
-kubectl logs -n flask-app deployment/sample-flask-app
+kubectl logs -n flask-app deployment/flask-app
 
 # Check vault-proxy logs  
 kubectl logs -n flask-app deployment/vault-proxy
+
+# Check Docker image status
+sudo docker images | grep flask-credit-system
+sudo k3s ctr images list | grep flask-credit-system
+
+# Test volume mounts
+kubectl exec -n flask-app deployment/flask-app -- ls -la /app/
+kubectl exec -n flask-app deployment/flask-app -- ls -la /app/core/
+
+# Check health endpoint
+kubectl exec -n flask-app deployment/flask-app -- curl -s http://localhost:5001/health
+```
+
+### Docker and Volume Mount Issues
+```bash
+# Rebuild Docker image if needed
+cd /home/rop02_user/python_base_03
+sudo docker build -t flask-credit-system:latest .
+
+# Import updated image to K3s
+sudo docker save flask-credit-system:latest -o /tmp/flask-app-image.tar
+sudo k3s ctr images import /tmp/flask-app-image.tar
+
+# Check volume mount paths on host
+ls -la /home/rop02_user/python_base_03/core/
+ls -la /home/rop02_user/python_base_03/plugins/
+
+# Restart deployment to pick up changes
+kubectl rollout restart deployment/flask-app -n flask-app
 ```
 
 ### Common Error Solutions
@@ -268,4 +346,23 @@ kubectl logs -n flask-app deployment/vault-proxy
 3. **Monitoring**: Deploy Prometheus/Grafana for observability
 4. **CI/CD Pipeline**: Automate deployments with secret rotation
 5. **Load Balancing**: Add Traefik/nginx-ingress for external access
-6. **Secret Management**: Implement automated credential rotation 
+6. **Secret Management**: Implement automated credential rotation
+
+## Docker-Based Development Setup
+
+The latest deployment uses a **custom Docker image with volume mounts** for optimal development experience:
+
+### Key Features:
+- ⚡ **Fast startup**: ~30 seconds (vs 5-10 minutes with ConfigMap approach)
+- 🔄 **Live code updates**: Changes reflected immediately without rebuilds
+- 🐳 **Production-ready**: Custom Docker image with pre-installed dependencies
+- 🔒 **Security hardened**: Non-root user, resource limits, health checks
+- 📂 **Volume mounts**: Core directories mounted for live development
+
+### Volume Mounts:
+- `/app/core` → Host: `/home/rop02_user/python_base_03/core`
+- `/app/plugins` → Host: `/home/rop02_user/python_base_03/plugins`
+- `/app/tools` → Host: `/home/rop02_user/python_base_03/tools`
+- `/app/utils` → Host: `/home/rop02_user/python_base_03/utils`
+- `/app/static` → Host: `/home/rop02_user/python_base_03/static`
+- `/app/app.py` → Host: `/home/rop02_user/python_base_03/app.py` 

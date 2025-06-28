@@ -34,7 +34,8 @@ menu_options = [
     "Run: 04_setup_flask_namespace.yml",
     "Run: 05_deploy_vault_proxy.yml",
     "Run: 06_setup_vault_approle_creds.yml",
-    "Run: 07_deploy_sample_flask_app.yml"
+    "Run: 07_deploy_flask_docker.yml (🐳 Docker-based deployment)",
+    "Run: 08_update_flask_docker.yml (🐳 Update Docker deployment)"
 ]
 
 print("\nWhere do you want to start the setup?")
@@ -114,7 +115,8 @@ def main():
             ("playbook_04", lambda: run_playbook("04_setup_flask_namespace.yml")),
             ("playbook_05", lambda: run_playbook("05_deploy_vault_proxy.yml")),
             ("playbook_06", lambda: run_playbook("06_setup_vault_approle_creds.yml")),
-            ("playbook_07", lambda: run_playbook("07_deploy_sample_flask_app.yml"))
+            ("playbook_07", lambda: run_playbook("07_deploy_flask_docker.yml")),
+            ("playbook_08", lambda: run_playbook("08_update_flask_docker.yml"))
         ]
         
         # Map menu choice to step index

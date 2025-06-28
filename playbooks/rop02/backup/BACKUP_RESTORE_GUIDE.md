@@ -15,9 +15,62 @@ This guide provides comprehensive backup and restore functionality for your VPS 
 
 ### **Kubernetes Infrastructure:**
 - `/etc/rancher` - K3s configuration
-- `/var/lib/rancher` - Main K3s data store (~1.3GB)
+- `/var/lib/rancher` - Main K3s data store (~3.4GB) - **COMPLETE CLUSTER STATE**
 - `/var/lib/kubelet` - Kubelet runtime data
 - `/var/lib/cni` - Container networking
+
+### 🎯 **K8s Cluster State - FULLY RECOVERABLE**
+
+The `/var/lib/rancher` backup (3.4GB) contains **100% of your cluster state**:
+
+#### 🗄️ **Complete Cluster Database** (`/var/lib/rancher/k3s/server/db/`)
+- **`state.db`** (8MB) - **Complete etcd database** with ALL cluster state
+- **`state.db-wal`** (5MB) - Write-ahead log for consistency
+- **`etcd/`** - etcd cluster data
+
+**This etcd database contains EVERYTHING**:
+- ✅ All deployments, services, ingresses
+- ✅ All pods, configmaps, secrets
+- ✅ All namespaces and RBAC policies
+- ✅ All persistent volume claims
+- ✅ All custom resources and CRDs
+
+#### 🐳 **Container Images & Runtime** (`/var/lib/rancher/k3s/agent/containerd/` - 3.2GB)
+- **All pulled Docker images** (your `flask-credit-system:latest`, Redis, MongoDB, etc.)
+- **Container runtime state and metadata**
+- **Image layers and cached data**
+
+#### 🔧 **Cluster Configuration & Security**
+- **`/var/lib/rancher/k3s/server/tls/`** - All TLS certificates and keys
+- **`/var/lib/rancher/k3s/server/cred/`** - Service account tokens
+- **`/var/lib/rancher/k3s/server/manifests/`** - Auto-deployed manifests
+- **`/var/lib/rancher/k3s/agent/etc/`** - Agent configuration
+
+#### 🚀 **What This Means for Recovery**
+
+When you restore this backup to a new VPS, your **entire production stack** comes back:
+
+**Your Flask App Infrastructure (All Restored)**:
+- ✅ **Flask app** with custom Docker image + volume mounts
+- ✅ **MongoDB** with authentication configured  
+- ✅ **Redis** master instance
+- ✅ **Vault proxy** with AppRole credentials
+- ✅ **All services** with proper ClusterIP assignments
+- ✅ **Ingress configuration** (via Traefik)
+
+**System Infrastructure (All Restored)**:
+- ✅ **Traefik** load balancer with external IP
+- ✅ **CoreDNS** for service discovery
+- ✅ **Metrics server** for monitoring
+- ✅ **Local path provisioner** for storage
+
+#### 🔄 **Recovery Process**
+1. **Install K3s** on new server
+2. **Stop K3s service**
+3. **Replace `/var/lib/rancher/k3s/`** with backup data
+4. **Start K3s service**
+
+**Result**: Your Flask app will be accessible at `flask-app.local` with all connections working!
 
 ### **Network & Security:**
 - `/etc/wireguard` - WireGuard VPN configurations
