@@ -1,7 +1,28 @@
 import os
+import logging
+
+# Initialize logger for config
+logger = logging.getLogger(__name__)
+
+# Global VaultManager instance (initialized once)
+_vault_manager = None
+
+def get_vault_manager():
+    """Get or create VaultManager instance with error handling."""
+    global _vault_manager
+    if _vault_manager is None:
+        try:
+            from core.managers.vault_manager import VaultManager
+            _vault_manager = VaultManager()
+            logger.info("✅ VaultManager initialized successfully for config")
+        except Exception as e:
+            logger.warning(f"⚠️ VaultManager initialization failed: {e}")
+            _vault_manager = False  # Mark as failed to avoid retrying
+    return _vault_manager if _vault_manager is not False else None
 
 # Helper to read secrets from files (returns None if not found)
 def read_secret_file(secret_name: str) -> str:
+    """Read secret from file system."""
     path = f"/run/secrets/{secret_name}"
     try:
         with open(path, 'r') as f:
@@ -9,12 +30,60 @@ def read_secret_file(secret_name: str) -> str:
     except Exception:
         return None
 
+def get_vault_secret(path: str, key: str) -> str:
+    """Get secret from Vault with error handling."""
+    try:
+        vault = get_vault_manager()
+        if vault:
+            return vault.get_secret_value(path, key)
+    except Exception as e:
+        logger.debug(f"Failed to get vault secret {path}/{key}: {e}")
+    return None
+
+def get_config_value(vault_path: str, vault_key: str, file_name: str = None, env_name: str = None, default_value: str = ""):
+    """
+    Get configuration value with priority: Vault > File > Environment > Default
+    
+    Args:
+        vault_path: Vault secret path (e.g., 'flask-app/mongodb')
+        vault_key: Key within the vault secret (e.g., 'database_name')
+        file_name: Secret file name (optional)
+        env_name: Environment variable name (optional)
+        default_value: Default value if all sources fail
+    """
+    # Skip Vault during initial class loading to avoid circular imports
+    # Vault will be available after full app initialization
+    
+    # 1. Try secret file first (during initialization)
+    if file_name:
+        file_value = read_secret_file(file_name)
+        if file_value is not None:
+            return file_value
+    
+    # 2. Try environment variable
+    if env_name:
+        env_value = os.getenv(env_name)
+        if env_value is not None:
+            return env_value
+    
+    # 3. Try Vault (only after app is fully loaded)
+    if vault_path and vault_key:
+        try:
+            vault_value = get_vault_secret(vault_path, vault_key)
+            if vault_value is not None:
+                return vault_value
+        except:
+            pass  # Ignore Vault errors during initialization
+    
+    # 4. Return default value
+    return default_value
+
 class Config:
     # Flask Configuration
-    FLASK_SERVICE_NAME = read_secret_file("flask_service_name") or os.getenv("FLASK_SERVICE_NAME", "flask")
-    FLASK_PORT = int(read_secret_file("flask_port") or os.getenv("FLASK_PORT", "5000"))
-    PYTHONPATH = read_secret_file("pythonpath") or os.getenv("PYTHONPATH", "/app")
-    FLASK_ENV = os.getenv("FLASK_ENV", "development")
+    FLASK_SERVICE_NAME = get_config_value("flask-app/app", "service_name", "flask_service_name", "FLASK_SERVICE_NAME", "flask")
+    FLASK_PORT = int(get_config_value("flask-app/app", "port", "flask_port", "FLASK_PORT", "5000"))
+    PYTHONPATH = get_config_value(None, None, "pythonpath", "PYTHONPATH", "/app")
+    FLASK_ENV = get_config_value("flask-app/app", "environment", None, "FLASK_ENV", "development")
 
     # Vault Configuration
     VAULT_TOKEN_FILE = read_secret_file("vault_token_file") or os.getenv("VAULT_TOKEN_FILE", "/vault/secrets/token")
@@ -23,20 +92,20 @@ class Config:
     VAULT_AUTH_PATH = os.getenv("VAULT_AUTH_PATH", "auth/kubernetes")
     VAULT_ROLE = os.getenv("VAULT_ROLE", "flask-app")
 
-    # MongoDB Configuration
-    MONGODB_SERVICE_NAME = read_secret_file("mongodb_service_name") or os.getenv("MONGODB_SERVICE_NAME", "mongodb")
-    MONGODB_ROOT_USER = read_secret_file("mongodb_root_user") or os.getenv("MONGODB_ROOT_USER", "root")
-    MONGODB_ROOT_PASSWORD = read_secret_file("mongodb_root_password") or os.getenv("MONGODB_ROOT_PASSWORD", "rootpassword")
-    MONGODB_USER = read_secret_file("mongodb_user") or os.getenv("MONGODB_USER", "credit_system_user")
-    MONGODB_PASSWORD = read_secret_file("mongodb_user_password") or os.getenv("MONGODB_PASSWORD", "credit_system_password")
-    MONGODB_DB_NAME = read_secret_file("mongodb_db_name") or os.getenv("MONGODB_DB_NAME", "credit_system")
-    MONGODB_PORT = int(read_secret_file("mongodb_port") or os.getenv("MONGODB_PORT", "27017"))
+    # MongoDB Configuration (now Vault-first)
+    MONGODB_SERVICE_NAME = get_config_value("flask-app/mongodb", "service_name", "mongodb_service_name", "MONGODB_SERVICE_NAME", "mongodb")
+    MONGODB_ROOT_USER = get_config_value("flask-app/mongodb", "root_user", "mongodb_root_user", "MONGODB_ROOT_USER", "root")
+    MONGODB_ROOT_PASSWORD = get_config_value("flask-app/mongodb", "root_password", "mongodb_root_password", "MONGODB_ROOT_PASSWORD", "rootpassword")
+    MONGODB_USER = get_config_value("flask-app/mongodb", "user", "mongodb_user", "MONGODB_USER", "credit_system_user")
+    MONGODB_PASSWORD = get_config_value("flask-app/mongodb", "user_password", "mongodb_user_password", "MONGODB_PASSWORD", "credit_system_password")
+    MONGODB_DB_NAME = get_config_value("flask-app/mongodb", "database_name", "mongodb_db_name", "MONGODB_DB_NAME", "credit_system")
+    MONGODB_PORT = int(get_config_value("flask-app/mongodb", "port", "mongodb_port", "MONGODB_PORT", "27017"))
 
-    # Redis Configuration
-    REDIS_SERVICE_NAME = read_secret_file("redis_service_name") or os.getenv("REDIS_SERVICE_NAME", "redis")
-    REDIS_HOST = os.getenv("REDIS_HOST", "redis-master.flask-app.svc.cluster.local")
-    REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
-    REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
+    # Redis Configuration (now Vault-first)
+    REDIS_SERVICE_NAME = get_config_value("flask-app/redis", "service_name", "redis_service_name", "REDIS_SERVICE_NAME", "redis")
+    REDIS_HOST = get_config_value("flask-app/redis", "host", None, "REDIS_HOST", "redis-master.flask-app.svc.cluster.local")
+    REDIS_PORT = int(get_config_value("flask-app/redis", "port", None, "REDIS_PORT", "6379"))
+    REDIS_PASSWORD = get_config_value("flask-app/redis", "password", None, "REDIS_PASSWORD", "")
     REDIS_DB = int(os.getenv("REDIS_DB", "0"))
     REDIS_USE_SSL = os.getenv("REDIS_USE_SSL", "false").lower() == "true"
     REDIS_SSL_VERIFY_MODE = os.getenv("REDIS_SSL_VERIFY_MODE", "required")
@@ -47,8 +116,8 @@ class Config:
     REDIS_MAX_RETRIES = int(os.getenv("REDIS_MAX_RETRIES", "3"))
     RATE_LIMIT_STORAGE_URL = os.getenv("RATE_LIMIT_STORAGE_URL", f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}")
 
-    # Debug mode
-    DEBUG = os.getenv("FLASK_DEBUG", "False").lower() in ("true", "1")
+    # Debug mode (now Vault-first)
+    DEBUG = get_config_value("flask-app/app", "debug", None, "FLASK_DEBUG", "False").lower() in ("true", "1")
 
     # App URL Configuration
     APP_URL = os.getenv("APP_URL", "http://localhost:5000")
@@ -57,8 +126,8 @@ class Config:
     CREDIT_SYSTEM_URL = os.getenv("CREDIT_SYSTEM_URL", "http://localhost:8000")
     CREDIT_SYSTEM_API_KEY = os.getenv("CREDIT_SYSTEM_API_KEY", "test_api_key")
 
-    # JWT Configuration
-    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-super-secret-key-change-in-production")
+    # JWT Configuration (now Vault-first for secret key)
+    JWT_SECRET_KEY = get_config_value("flask-app/app", "secret_key", None, "JWT_SECRET_KEY", "your-super-secret-key-change-in-production")
     JWT_ACCESS_TOKEN_EXPIRES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRES", "3600"))  # 1 hour in seconds
     JWT_REFRESH_TOKEN_EXPIRES = int(os.getenv("JWT_REFRESH_TOKEN_EXPIRES", "604800"))  # 7 days in seconds
     JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
@@ -186,3 +255,69 @@ class Config:
     MONGODB_SSL_CERT_FILE = os.getenv("MONGODB_SSL_CERT_FILE", "")
     MONGODB_SSL_KEY_FILE = os.getenv("MONGODB_SSL_KEY_FILE", "")
     MONGODB_SSL_ALLOW_INVALID_CERTIFICATES = os.getenv("MONGODB_SSL_ALLOW_INVALID_CERTIFICATES", "false").lower() == "true"
+
+    @classmethod
+    def refresh_from_vault(cls):
+        """Refresh configuration values from Vault after app initialization."""
+        try:
+            vault = get_vault_manager()
+            if not vault:
+                logger.warning("VaultManager not available for refresh")
+                return False
+            
+            # Refresh MongoDB config
+            mongodb_secrets = vault.get_mongodb_secrets()
+            if mongodb_secrets:
+                cls.MONGODB_SERVICE_NAME = mongodb_secrets.get('service_name', cls.MONGODB_SERVICE_NAME)
+                cls.MONGODB_ROOT_USER = mongodb_secrets.get('root_user', cls.MONGODB_ROOT_USER)
+                cls.MONGODB_ROOT_PASSWORD = mongodb_secrets.get('root_password', cls.MONGODB_ROOT_PASSWORD)
+                cls.MONGODB_USER = mongodb_secrets.get('user', cls.MONGODB_USER)
+                cls.MONGODB_PASSWORD = mongodb_secrets.get('user_password', cls.MONGODB_PASSWORD)
+                cls.MONGODB_DB_NAME = mongodb_secrets.get('database_name', cls.MONGODB_DB_NAME)
+                cls.MONGODB_PORT = int(mongodb_secrets.get('port', cls.MONGODB_PORT))
+                logger.info("✅ MongoDB config refreshed from Vault")
+            
+            # Refresh Redis config
+            redis_secrets = vault.get_redis_secrets()
+            if redis_secrets:
+                cls.REDIS_SERVICE_NAME = redis_secrets.get('service_name', cls.REDIS_SERVICE_NAME)
+                cls.REDIS_HOST = redis_secrets.get('host', cls.REDIS_HOST)
+                cls.REDIS_PORT = int(redis_secrets.get('port', cls.REDIS_PORT))
+                cls.REDIS_PASSWORD = redis_secrets.get('password', cls.REDIS_PASSWORD)
+                logger.info("✅ Redis config refreshed from Vault")
+            
+            # Refresh Flask app config
+            app_secrets = vault.get_app_secrets()
+            if app_secrets:
+                cls.JWT_SECRET_KEY = app_secrets.get('secret_key', cls.JWT_SECRET_KEY)
+                cls.FLASK_ENV = app_secrets.get('environment', cls.FLASK_ENV)
+                cls.DEBUG = app_secrets.get('debug', str(cls.DEBUG)).lower() in ('true', '1')
+                logger.info("✅ Flask app config refreshed from Vault")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to refresh config from Vault: {e}")
+            return False
+
+    @classmethod
+    def get_vault_status(cls):
+        """Get current Vault integration status for debugging."""
+        try:
+            vault = get_vault_manager()
+            if vault:
+                return {
+                    "status": "connected",
+                    "connection_info": vault.get_connection_info(),
+                    "health": vault.health_check()
+                }
+            else:
+                return {
+                    "status": "unavailable",
+                    "reason": "VaultManager initialization failed or not configured"
+                }
+        except Exception as e:
+            return {
+                "status": "error",
+                "reason": f"Error getting vault status: {e}"
+            }
