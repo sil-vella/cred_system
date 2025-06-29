@@ -39,15 +39,17 @@ class DatabaseManager:
     def _setup_mongodb_connection(self):
         """Set up MongoDB connection with role-based access control and read-only replicas."""
         try:
-            # Prefer secrets files for all config values
-            mongodb_user = read_secret_file('/run/secrets/mongodb_root_user') or os.environ.get('MONGODB_ROOT_USER', 'root')
-            password = read_secret_file('/run/secrets/mongodb_root_password') or os.environ.get('MONGODB_ROOT_PASSWORD')
-            mongodb_host = read_secret_file('/run/secrets/mongodb_service_name') or os.environ.get('MONGODB_SERVICE_NAME', 'mongodb')
-            mongodb_port = read_secret_file('/run/secrets/mongodb_port') or os.environ.get('MONGODB_PORT', '27017')
-            mongodb_db = read_secret_file('/run/secrets/mongodb_db_name') or os.environ.get('MONGODB_DB_NAME', 'credit_system')
+            # Use centralized config system for all MongoDB settings
+            from utils.config.config import Config
+            
+            mongodb_user = Config.MONGODB_ROOT_USER
+            password = Config.MONGODB_ROOT_PASSWORD
+            mongodb_host = Config.MONGODB_SERVICE_NAME
+            mongodb_port = str(Config.MONGODB_PORT)
+            mongodb_db = Config.MONGODB_DB_NAME
 
             if not password:
-                raise ValueError("MongoDB password not provided")
+                raise ValueError("MongoDB password not provided - check Vault, secret files, or environment variables")
 
             # URL encode username and password
             encoded_user = quote_plus(mongodb_user)
@@ -215,5 +217,18 @@ class DatabaseManager:
         except Exception as e:
             self.logger.error(f"Database connection check failed: {e}")
             return False
+
+    def get_connection_count(self):
+        """Get the current number of active database connections."""
+        try:
+            if not self.client:
+                return 0
+            # Get server status which includes connection info
+            server_status = self.client.admin.command("serverStatus")
+            connections = server_status.get("connections", {})
+            return connections.get("current", 0)
+        except Exception as e:
+            self.logger.error(f"Failed to get connection count: {e}")
+            return 0
 
 # ... existing code ... 

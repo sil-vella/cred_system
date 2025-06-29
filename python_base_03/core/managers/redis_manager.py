@@ -73,7 +73,7 @@ class RedisManager:
         """Initialize Redis connection pool with security settings."""
         try:
             # Read host and port from secrets if available, else env, else default
-            redis_host = read_secret_file('/run/secrets/redis_host') or os.getenv("REDIS_HOST", "redis-master.flask-app.svc.cluster.local")
+            redis_host = read_secret_file('/run/secrets/redis_host') or os.getenv("REDIS_HOST", "redis-master-master.flask-app.svc.cluster.local")
             redis_port = int(read_secret_file('/run/secrets/redis_port') or os.getenv("REDIS_PORT", "6379"))
             redis_password = self._get_redis_password()
 
@@ -104,11 +104,10 @@ class RedisManager:
             # Create connection pool
             self.connection_pool = redis.ConnectionPool(**pool_settings)
             
-            # Test connection
+            # Initialize Redis client (but don't test connection during startup)
             self.redis = redis.Redis(connection_pool=self.connection_pool)
-            self.redis.ping()
             self._initialized = True
-            custom_log(f"✅ Redis connection pool initialized successfully (host={redis_host}, port={redis_port})")
+            custom_log(f"✅ Redis connection pool initialized (host={redis_host}, port={redis_port}) - connection will be tested on first use")
         except Exception as e:
             custom_log(f"❌ Error initializing Redis connection pool: {e}")
             self._initialized = False
@@ -655,7 +654,19 @@ class RedisManager:
         return self.redis
 
     def close(self):
-        """Close Redis connection pool."""
+        """Close all connections in the pool."""
         if self.connection_pool:
             self.connection_pool.disconnect()
-            self._initialized = False 
+            custom_log("✅ Redis connection pool closed")
+
+    def get_connection_count(self):
+        """Get the current number of active Redis connections."""
+        try:
+            if not self.connection_pool:
+                return 0
+            # Get connection pool info
+            pool_info = self.connection_pool.connection_kwargs
+            return len(self.connection_pool._available_connections) + len(self.connection_pool._in_use_connections)
+        except Exception as e:
+            self.logger.error(f"Failed to get Redis connection count: {e}")
+            return 0 

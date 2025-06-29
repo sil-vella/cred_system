@@ -69,7 +69,7 @@
                 
                 # Redis Configuration (bypasses Vault)
                 - name: REDIS_HOST
-                  value: "redis-master.flask-app.svc.cluster.local"
+                  value: "redis-master-master.flask-app.svc.cluster.local"
                 - name: REDIS_PORT
                   value: "6379"
                 - name: REDIS_DB

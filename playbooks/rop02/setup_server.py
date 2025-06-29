@@ -30,12 +30,14 @@ if not sudo_password:
 menu_options = [
     "Start from the very beginning (all steps)",
     "Run: 01_configure_security.yml",
-    "Run: 03_setup_k3s.yml",
-    "Run: 04_setup_flask_namespace.yml",
-    "Run: 05_deploy_vault_proxy.yml",
-    "Run: 06_setup_vault_approle_creds.yml",
-    "Run: 07_deploy_flask_docker.yml (🐳 Docker-based deployment)",
-    "Run: 08_update_flask_docker.yml (🐳 Update Docker deployment)"
+    "Run: 02_setup_k3s.yml",
+    "Run: 03_deploy_mongodb.yml (🗄️ MongoDB with persistent storage)",
+    "Run: 04_deploy_redis.yml (🚀 Redis with persistent storage)",
+    "Run: 05_setup_flask_namespace.yml",
+    "Run: 06_deploy_vault_proxy.yml",
+    "Run: 07_setup_vault_approle_creds.yml",
+    "Run: 08_deploy_flask_docker.yml (🐳 Docker-based deployment)",
+    "Run: 09_update_flask_docker.yml (🐳 Update Docker deployment)"
 ]
 
 print("\nWhere do you want to start the setup?")
@@ -111,17 +113,19 @@ def main():
         # Step index mapping - aligned with menu options
         steps = [
             ("playbook_01", lambda: run_playbook("01_configure_security.yml")),
-            ("playbook_03", lambda: run_playbook("03_setup_k3s.yml")),
-            ("playbook_04", lambda: run_playbook("04_setup_flask_namespace.yml")),
-            ("playbook_05", lambda: run_playbook("05_deploy_vault_proxy.yml")),
-            ("playbook_06", lambda: run_playbook("06_setup_vault_approle_creds.yml")),
-            ("playbook_07", lambda: run_playbook("07_deploy_flask_docker.yml")),
-            ("playbook_08", lambda: run_playbook("08_update_flask_docker.yml"))
+            ("playbook_02", lambda: run_playbook("02_setup_k3s.yml")),
+            ("playbook_03", lambda: run_playbook("03_deploy_mongodb.yml")),
+            ("playbook_04", lambda: run_playbook("04_deploy_redis.yml")),
+            ("playbook_05", lambda: run_playbook("05_setup_flask_namespace.yml")),
+            ("playbook_06", lambda: run_playbook("06_deploy_vault_proxy.yml")),
+            ("playbook_07", lambda: run_playbook("07_setup_vault_approle_creds.yml")),
+            ("playbook_08", lambda: run_playbook("08_deploy_flask_docker.yml")),
+            ("playbook_09", lambda: run_playbook("09_update_flask_docker.yml"))
         ]
         
         # Map menu choice to step index
         # Menu option 0 = "Start from beginning" (run all steps)
-        # Menu options 1-10 correspond to steps 0-9
+        # Menu options 1-10 correspond to steps 0-8
         if start_choice == 0:
             # Start from the very beginning - run all steps
             run_range = range(len(steps))

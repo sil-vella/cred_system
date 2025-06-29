@@ -20,19 +20,11 @@ class EncryptionManager:
     
     def _initialize_fernet(self) -> None:
         """Initialize the Fernet encryption instance."""
-        # Try to get encryption key from environment or file
-        key = os.getenv('ENCRYPTION_KEY')
-        key_file = os.getenv('ENCRYPTION_KEY_FILE')
-        
-        if key_file and os.path.exists(key_file):
-            try:
-                with open(key_file, 'r') as f:
-                    key = f.read().strip()
-            except Exception as e:
-                raise RuntimeError(f"Failed to read encryption key from file: {e}")
+        # Use the centralized config system that handles files, environment, and Vault
+        key = Config.ENCRYPTION_KEY
         
         if not key:
-            raise RuntimeError("ENCRYPTION_KEY environment variable or ENCRYPTION_KEY_FILE is required")
+            raise RuntimeError("ENCRYPTION_KEY is required - check Vault, secret files, or environment variables")
         
         # Derive encryption key using PBKDF2
         kdf = PBKDF2HMAC(
