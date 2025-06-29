@@ -20,13 +20,7 @@ except ImportError:
     ExponentialBackoff = None
     Retry = None
 
-# Helper to read secrets from files
-def read_secret_file(path: str) -> Optional[str]:
-    try:
-        with open(path, 'r') as f:
-            return f.read().strip()
-    except Exception:
-        return None
+# Redis configuration now uses Config class with proper priority system
 
 class RedisManager:
     _instance = None
@@ -62,20 +56,19 @@ class RedisManager:
         self.cipher_suite = Fernet(key)
 
     def _get_redis_password(self):
-        """Get Redis password from secrets or environment."""
-        try:
-            return read_secret_file('/run/secrets/redis_password') or os.getenv("REDIS_PASSWORD", "")
-        except Exception as e:
-            custom_log(f"Warning: Could not read Redis password from secrets: {e}")
-            return os.getenv("REDIS_PASSWORD", "")
+        """Get Redis password using Config priority system."""
+        return Config.REDIS_PASSWORD
 
     def _initialize_connection_pool(self):
         """Initialize Redis connection pool with security settings."""
         try:
-            # Read host and port from secrets if available, else env, else default
-            redis_host = read_secret_file('/run/secrets/redis_host') or os.getenv("REDIS_HOST", "redis-master-master.flask-app.svc.cluster.local")
-            redis_port = int(read_secret_file('/run/secrets/redis_port') or os.getenv("REDIS_PORT", "6379"))
-            redis_password = self._get_redis_password()
+            # Use Config class values that follow proper priority system
+            redis_host = Config.REDIS_HOST
+            redis_port = Config.REDIS_PORT
+            redis_password = Config.REDIS_PASSWORD
+
+            # Log configuration for debugging
+            custom_log(f"🔍 Redis connection config - Host: {redis_host}, Port: {redis_port}, Password: {'***' if redis_password else 'EMPTY'}")
 
             # Base connection pool settings
             pool_settings = {
