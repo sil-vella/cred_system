@@ -143,7 +143,7 @@ def build_flask_image():
     
     # Build the image
     try:
-        os.chdir("../../python_base_03")
+        os.chdir("../../python_base_04_k8s")
         run_command("docker build -t flask-credit-system:latest .", shell=True)
         logger.info("✅ Flask image built successfully")
         print("✅ Flask image built: flask-credit-system:latest")

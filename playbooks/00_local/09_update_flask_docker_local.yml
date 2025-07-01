@@ -5,7 +5,7 @@
   vars:
     flask_namespace: flask-app
     docker_image: "flask-credit-system:latest"
-    app_source_path: "../../python_base_03"
+    app_source_path: "../../python_base_04_k8s"
   tasks:
     - name: Prepare Flask application source code
       shell: |

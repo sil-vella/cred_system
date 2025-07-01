@@ -21,7 +21,7 @@ You requested to modify the fallback system so that environment variables are re
 
 ## 📁 **Your Secret Files**
 
-Located in `python_base_03/secrets/`:
+Located in `python_base_04_k8s/secrets/`:
 ```
 mongodb_root_password     (14 chars) ✅
 mongodb_root_user         (4 chars)  ✅
@@ -169,7 +169,7 @@ for name, source in status['sources'].items():
 
 ### **File Reading Test**
 ```bash
-cd python_base_03
+cd python_base_04_k8s
 python3 -c "
 from utils.config.config import read_secret_file
 print('MongoDB Password:', read_secret_file('mongodb_root_password')[:10] + '...')

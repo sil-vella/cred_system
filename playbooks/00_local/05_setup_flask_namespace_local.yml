@@ -67,7 +67,7 @@
     - name: Create Kubernetes secret from 113 local secret files
       shell: |
         # Get absolute path to secrets directory
-        SECRETS_DIR="$(pwd)/../../python_base_03/secrets"
+        SECRETS_DIR="$(pwd)/../../python_base_04_k8s/secrets"
         echo "Creating 'external' secret from $SECRETS_DIR"
         
         # Build kubectl create secret command with all files

@@ -103,7 +103,7 @@ python3 setup_local_dev.py
 ### For Code Changes
 ```bash
 # 1. Edit your Flask code locally
-vim python_base_03/core/managers/some_manager.py
+vim python_base_04_k8s/core/managers/some_manager.py
 
 # 2. Rebuild and update
 cd playbooks/00_local/
@@ -423,7 +423,7 @@ app_dev_new_playbooks/
 │   ├── 05_setup_flask_namespace_local.yml
 │   ├── 08_deploy_flask_docker_local.yml
 │   └── 09_update_flask_docker_local.yml
-├── python_base_03/               # Flask application
+├── python_base_04_k8s/               # Flask application
 │   ├── Dockerfile               # Flask image definition
 │   ├── app.py                   # Main Flask app
 │   └── core/                    # Application core
@@ -452,7 +452,7 @@ curl http://localhost:8080/health
 ### Development Loop
 ```bash
 # Edit code
-vim python_base_03/core/managers/some_manager.py
+vim python_base_04_k8s/core/managers/some_manager.py
 
 # Update deployment
 python3 setup_local_dev.py  # Choose option 8

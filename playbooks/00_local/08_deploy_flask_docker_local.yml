@@ -250,8 +250,8 @@
           3. ⚙️ Application defaults
           
           Development Workflow:
-          1. Edit code: python_base_03/
-          2. Rebuild: docker build -t flask-credit-system:latest python_base_03/
+          1. Edit code: python_base_04_k8s/
+          2. Rebuild: docker build -t flask-credit-system:latest python_base_04_k8s/
           3. Import: k3d image import flask-credit-system:latest -c local-dev
           4. Restart: kubectl rollout restart deployment/flask-app -n {{ flask_namespace }}
           

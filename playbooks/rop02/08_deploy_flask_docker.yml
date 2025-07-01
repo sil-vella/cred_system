@@ -41,7 +41,7 @@
         
         # Create secret from all files in secrets directory
         kubectl create secret generic external \
-          --from-file=/home/{{ new_user }}/python_base_03/secrets/ \
+          --from-file=/home/{{ new_user }}/python_base_04_k8s/secrets/ \
           -n {{ flask_namespace }}
         
         # Verify secret was created
@@ -157,27 +157,27 @@
               volumes:
               - name: app-py
                 hostPath:
-                  path: /home/{{ new_user }}/python_base_03/app.py
+                  path: /home/{{ new_user }}/python_base_04_k8s/app.py
                   type: File
               - name: core-volume
                 hostPath:
-                  path: /home/{{ new_user }}/python_base_03/core
+                  path: /home/{{ new_user }}/python_base_04_k8s/core
                   type: Directory
               - name: plugins-volume
                 hostPath:
-                  path: /home/{{ new_user }}/python_base_03/plugins
+                  path: /home/{{ new_user }}/python_base_04_k8s/plugins
                   type: Directory
               - name: static-volume
                 hostPath:
-                  path: /home/{{ new_user }}/python_base_03/static
+                  path: /home/{{ new_user }}/python_base_04_k8s/static
                   type: Directory
               - name: tools-volume
                 hostPath:
-                  path: /home/{{ new_user }}/python_base_03/tools
+                  path: /home/{{ new_user }}/python_base_04_k8s/tools
                   type: Directory
               - name: utils-volume
                 hostPath:
-                  path: /home/{{ new_user }}/python_base_03/utils
+                  path: /home/{{ new_user }}/python_base_04_k8s/utils
                   type: Directory
               - name: secrets-volume
                 secret:

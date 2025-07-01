@@ -124,7 +124,7 @@ ansible-playbook -i inventory.ini 08_update_flask_docker.yml -e vm_name=rop02
 #### For Code Changes (No Redeployment Needed):
 ```bash
 # Edit files locally, then copy to VPS
-scp python_base_03/core/managers/some_file.py rop02:/home/rop02_user/python_base_03/core/managers/
+scp python_base_04_k8s/core/managers/some_file.py rop02:/home/rop02_user/python_base_04_k8s/core/managers/
 # Changes are immediately live in the pod!
 ```
 
@@ -294,7 +294,7 @@ kubectl exec -n flask-app deployment/flask-app -- curl -s http://localhost:5001/
 ### Docker and Volume Mount Issues
 ```bash
 # Rebuild Docker image if needed
-cd /home/rop02_user/python_base_03
+cd /home/rop02_user/python_base_04_k8s
 sudo docker build -t flask-credit-system:latest .
 
 # Import updated image to K3s
@@ -302,8 +302,8 @@ sudo docker save flask-credit-system:latest -o /tmp/flask-app-image.tar
 sudo k3s ctr images import /tmp/flask-app-image.tar
 
 # Check volume mount paths on host
-ls -la /home/rop02_user/python_base_03/core/
-ls -la /home/rop02_user/python_base_03/plugins/
+ls -la /home/rop02_user/python_base_04_k8s/core/
+ls -la /home/rop02_user/python_base_04_k8s/plugins/
 
 # Restart deployment to pick up changes
 kubectl rollout restart deployment/flask-app -n flask-app
@@ -360,9 +360,9 @@ The latest deployment uses a **custom Docker image with volume mounts** for opti
 - 📂 **Volume mounts**: Core directories mounted for live development
 
 ### Volume Mounts:
-- `/app/core` → Host: `/home/rop02_user/python_base_03/core`
-- `/app/plugins` → Host: `/home/rop02_user/python_base_03/plugins`
-- `/app/tools` → Host: `/home/rop02_user/python_base_03/tools`
-- `/app/utils` → Host: `/home/rop02_user/python_base_03/utils`
-- `/app/static` → Host: `/home/rop02_user/python_base_03/static`
-- `/app/app.py` → Host: `/home/rop02_user/python_base_03/app.py` 
+- `/app/core` → Host: `/home/rop02_user/python_base_04_k8s/core`
+- `/app/plugins` → Host: `/home/rop02_user/python_base_04_k8s/plugins`
+- `/app/tools` → Host: `/home/rop02_user/python_base_04_k8s/tools`
+- `/app/utils` → Host: `/home/rop02_user/python_base_04_k8s/utils`
+- `/app/static` → Host: `/home/rop02_user/python_base_04_k8s/static`
+- `/app/app.py` → Host: `/home/rop02_user/python_base_04_k8s/app.py` 

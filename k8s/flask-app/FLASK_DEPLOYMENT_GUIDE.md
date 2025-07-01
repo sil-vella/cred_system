@@ -11,7 +11,7 @@ This document provides a comprehensive overview of the Flask application deploym
 ┌─────────────────────────────────────────────────────────────────┐
 │                        LOCAL DEVELOPMENT                        │
 ├─────────────────────────────────────────────────────────────────┤
-│  Local Machine: /Users/sil/.../python_base_03/                 │
+│  Local Machine: /Users/sil/.../python_base_04_k8s/                 │
 │  ├── app.py                                                     │
 │  ├── core/managers/vault_manager.py  ← NEW VAULT INTEGRATION    │
 │  ├── utils/config/config.py          ← VAULT-FIRST CONFIG       │
@@ -25,7 +25,7 @@ This document provides a comprehensive overview of the Flask application deploym
 ┌─────────────────────────────────────────────────────────────────┐
 │                         VPS HOST LAYER (rop02)                  │
 ├─────────────────────────────────────────────────────────────────┤
-│  VPS: /home/rop02_user/python_base_03/                         │
+│  VPS: /home/rop02_user/python_base_04_k8s/                         │
 │  ├── Live code synchronized from local                          │
 │  ├── secrets/ (115 files) → Kubernetes secret "external"       │
 │  └── Kubernetes cluster with Flask app                          │
@@ -274,7 +274,7 @@ Config.MONGODB_PASSWORD = mongodb_secrets["user_password"]
 - 📦 **Optimized layers** for faster builds
 - 🔐 **Vault-ready** environment
 
-**Dockerfile Location**: `/home/rop02_user/python_base_03/Dockerfile`
+**Dockerfile Location**: `/home/rop02_user/python_base_04_k8s/Dockerfile`
 
 ```dockerfile
 FROM python:3.9-slim
@@ -331,12 +331,12 @@ CMD ["python", "app.py"]
 
 | Container Path | Host Path | Purpose |
 |---------------|-----------|---------|
-| `/app/core` | `/home/rop02_user/python_base_03/core` | **Core logic + VaultManager** |
-| `/app/utils` | `/home/rop02_user/python_base_03/utils` | **Config + Vault integration** |
-| `/app/plugins` | `/home/rop02_user/python_base_03/plugins` | Plugin system |
-| `/app/tools` | `/home/rop02_user/python_base_03/tools` | Utility tools |
-| `/app/static` | `/home/rop02_user/python_base_03/static` | Static assets |
-| `/app/app.py` | `/home/rop02_user/python_base_03/app.py` | Main Flask application |
+| `/app/core` | `/home/rop02_user/python_base_04_k8s/core` | **Core logic + VaultManager** |
+| `/app/utils` | `/home/rop02_user/python_base_04_k8s/utils` | **Config + Vault integration** |
+| `/app/plugins` | `/home/rop02_user/python_base_04_k8s/plugins` | Plugin system |
+| `/app/tools` | `/home/rop02_user/python_base_04_k8s/tools` | Utility tools |
+| `/app/static` | `/home/rop02_user/python_base_04_k8s/static` | Static assets |
+| `/app/app.py` | `/home/rop02_user/python_base_04_k8s/app.py` | Main Flask application |
 
 ### 🔐 **Vault Environment Variables**
 
@@ -462,11 +462,11 @@ spec:
       volumes:
       - name: core-volume
         hostPath:
-          path: /home/rop02_user/python_base_03/core
+          path: /home/rop02_user/python_base_04_k8s/core
           type: Directory
       - name: utils-volume
         hostPath:
-          path: /home/rop02_user/python_base_03/utils
+          path: /home/rop02_user/python_base_04_k8s/utils
           type: Directory
       # ... more volumes
 ```
@@ -533,12 +533,12 @@ spec:
 
 ```bash
 # 1. Edit VaultManager or config locally
-vim python_base_03/core/managers/vault_manager.py
-vim python_base_03/utils/config/config.py
+vim python_base_04_k8s/core/managers/vault_manager.py
+vim python_base_04_k8s/utils/config/config.py
 
 # 2. Copy to VPS (immediately live in pod)
-scp python_base_03/core/managers/vault_manager.py rop02:/home/rop02_user/python_base_03/core/managers/
-scp python_base_03/utils/config/config.py rop02:/home/rop02_user/python_base_03/utils/config/
+scp python_base_04_k8s/core/managers/vault_manager.py rop02:/home/rop02_user/python_base_04_k8s/core/managers/
+scp python_base_04_k8s/utils/config/config.py rop02:/home/rop02_user/python_base_04_k8s/utils/config/
 
 # 3. Restart Flask pod to apply changes
 ssh rop02 "kubectl delete pod -n flask-app -l app=flask-app"
@@ -892,14 +892,14 @@ print(f'After: {Config.JWT_SECRET_KEY[:10]}...')
 ## 📝 Key Files Reference (Updated)
 
 ### Vault Integration
-- `python_base_03/core/managers/vault_manager.py` - **VaultManager implementation**
-- `python_base_03/utils/config/config.py` - **Vault-first configuration**
-- `python_base_03/core/managers/__init__.py` - **VaultManager exports**
+- `python_base_04_k8s/core/managers/vault_manager.py` - **VaultManager implementation**
+- `python_base_04_k8s/utils/config/config.py` - **Vault-first configuration**
+- `python_base_04_k8s/core/managers/__init__.py` - **VaultManager exports**
 
 ### Local Development
-- `python_base_03/app.py` - Main Flask application
-- `python_base_03/Dockerfile` - Docker image with Vault support
-- `python_base_03/requirements.txt` - Dependencies (includes requests)
+- `python_base_04_k8s/app.py` - Main Flask application
+- `python_base_04_k8s/Dockerfile` - Docker image with Vault support
+- `python_base_04_k8s/requirements.txt` - Dependencies (includes requests)
 
 ### Deployment Automation
 - `playbooks/rop02/07_deploy_flask_docker.yml` - **Enhanced deployment with Vault**
