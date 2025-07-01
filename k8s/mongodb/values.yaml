@@ -4,7 +4,7 @@
 
 # Global configuration
 global:
-  storageClass: "local-path"
+  storageClass: "standard"
 
 # Authentication
 auth:
@@ -24,7 +24,7 @@ architecture: standalone
 # Persistence
 persistence:
   enabled: true
-  storageClass: "local-path"
+  storageClass: "standard"
   size: 10Gi
   accessModes:
     - ReadWriteOnce

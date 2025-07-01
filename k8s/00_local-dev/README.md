@@ -1,41 +1,45 @@
-# Local Development with k3d
+# Local Development with minikube
 
-This guide shows how to set up a local Kubernetes development environment using k3d that **exactly mirrors** your production VPS setup.
+This guide shows how to set up a local Kubernetes development environment using **minikube** that **exactly mirrors** your production VPS setup.
 
-## 🎯 Why k3d?
+## 🎯 Why minikube?
 
-- **Same K3s version** as production (`v1.31.5+k3s1`)
-- **Identical deployment approach** - no registry, local images only
-- **Same manifests** - use your existing Ansible playbooks unchanged
-- **Fast and lightweight** - runs K3s in Docker containers
+- **Production-identical structure** - same namespaces, secrets, and RBAC
+- **Reliable networking** - stable DNS resolution and service discovery
+- **Easy image management** - simple image loading with `minikube image load`
+- **Mature ecosystem** - battle-tested with excellent Docker Desktop integration
+- **113 secret files** - exact same filesystem structure as production
 
 ---
 
 ## 📋 Prerequisites
 
-### 1. Install Docker
+### 1. Install Docker Desktop
 ```bash
-# Install Docker via Colima (lightweight) or Docker Desktop
-brew install colima docker
+# Remove conflicting Docker CLI (if installed via brew)
+brew uninstall docker
 
-# Start Colima
-colima start
+# Install Docker Desktop
+brew install --cask docker
+
+# Start Docker Desktop from Applications or:
+open /Applications/Docker.app
 
 # Verify Docker is working
 docker --version
-# Should show: Docker version 28.3.0, build 38b7060a21
+# Should show: Docker version 27.x.x
 ```
 
-### 2. Install k3d and kubectl
+### 2. Install minikube and kubectl
 ```bash
-# Install k3d
-brew install k3d
+# Install minikube
+brew install minikube
 
 # Install kubectl (if not already installed)
 brew install kubectl
 
 # Verify installations
-k3d version
+minikube version
 kubectl version --client
 ```
 
@@ -43,69 +47,87 @@ kubectl version --client
 
 ## 🚀 Quick Start
 
-### 1. Create Local K3s Cluster
+### 1. Create Local minikube Cluster
 ```bash
-# Create cluster with port forwarding for web access
-k3d cluster create local-dev --port "8080:80@loadbalancer"
+# Start minikube with Docker driver
+minikube start --driver=docker
 
 # Verify cluster is running
 kubectl get nodes
-# Should show: k3d-local-dev-server-0   Ready    control-plane,master
+# Should show: minikube   Ready    control-plane   2m   v1.31.0
+
+# Check cluster status
+minikube status
 ```
 
-### 2. Build and Import Flask Application
+### 2. Deploy Complete Environment
 ```bash
-# Navigate to Flask app directory
-cd python_base_03/
+# Navigate to local playbooks directory
+cd playbooks/00_local/
 
-# Build Docker image (same name as production)
-docker build -t flask-credit-system:latest .
+# Run the orchestrator script
+python3 setup_local_dev.py
 
-# Import image into k3d cluster
-k3d image import flask-credit-system:latest -c local-dev
-
-# Verify image is available
-docker images | grep flask-credit-system
+# Choose option 1: Complete setup (build image + all components)
+# This will:
+# 1. Build Flask Docker image
+# 2. Load image into minikube
+# 3. Create namespace with 113 secrets
+# 4. Deploy MongoDB
+# 5. Deploy Redis  
+# 6. Deploy Flask application
+# 7. Test deployment
 ```
 
-### 3. Deploy Using Existing Playbooks
-```bash
-# Navigate to playbooks directory
-cd ../playbooks/rop02/
+---
 
-# Deploy Flask app using existing playbook (unchanged!)
-ansible-playbook -i inventory.ini 07_deploy_flask_docker.yml \
-  -e vm_name=local \
-  --connection=local
-```
+## 🏗️ Architecture Overview
+
+### Production-Identical Components
+- **Namespace**: `flask-app` with proper RBAC
+- **Secrets**: 113 files mounted from `../../secrets/` (exact production match)
+- **MongoDB**: Bitnami chart with persistent storage (10Gi)
+- **Redis**: Bitnami chart with persistent storage (5Gi)
+- **Flask App**: Production-identical deployment with health checks
+
+### Key Features
+- **Vault Fallback**: App detects no Vault and uses Kubernetes secrets (just like production)
+- **Service Discovery**: Proper DNS resolution between services
+- **Security**: Non-root containers, RBAC, network policies
+- **Monitoring**: Health checks, readiness probes, metrics endpoints
 
 ---
 
 ## 🔧 Development Workflow
 
-### For Code Changes (Fast - No Rebuilds)
+### For Code Changes
 ```bash
 # 1. Edit your Flask code locally
 vim python_base_03/core/managers/some_manager.py
 
-# 2. Update the running container (if using volume mounts)
-# Changes are automatically reflected since k3d can mount local directories
-
-# 3. Or rebuild and update image
-cd python_base_03/
-docker build -t flask-credit-system:latest .
-k3d image import flask-credit-system:latest -c local-dev
-
-# 4. Restart deployment to pick up new image
-kubectl rollout restart deployment/flask-app -n flask-app
+# 2. Rebuild and update
+cd playbooks/00_local/
+python3 setup_local_dev.py
+# Choose option 8: Update Flask application
+# This rebuilds image and redeploys
 ```
 
-### For Configuration Changes
+### Individual Component Management
 ```bash
-# Redeploy with updated configuration
-ansible-playbook -i inventory.ini 07_deploy_flask_docker.yml \
-  -e vm_name=local \
-  --connection=local
+cd playbooks/00_local/
+python3 setup_local_dev.py
+
+# Available options:
+# 1. 🏗️  Complete setup (build image + all components)
+# 2. 💾 Setup local persistent storage
+# 3. 🏠 Setup Flask namespace and RBAC  
+# 4. 📊 Deploy MongoDB with persistent storage
+# 5. 🚀 Deploy Redis with persistent storage
+# 6. 🐳 Build Flask Docker image only
+# 7. 🐍 Deploy Flask application
+# 8. 🔄 Update Flask application
+# 9. 📈 Deploy full infrastructure stack
+# 10. 🧪 Test deployment
 ```
 
 ---
@@ -119,19 +141,22 @@ kubectl port-forward -n flask-app svc/flask-app 8080:80
 
 # Access your app
 curl http://localhost:8080/health
+# Returns: {"status": "healthy"}
+
 curl http://localhost:8080/
+# Your Flask application
 
 # Or open in browser
 open http://localhost:8080
 ```
 
-### Via k3d LoadBalancer
+### Via minikube Service
 ```bash
-# Access via k3d's built-in load balancer (if configured)
-curl http://localhost:8080/
+# Open Flask app in browser via minikube
+minikube service flask-app -n flask-app
 
-# With host header (if using ingress)
-curl -H 'Host: flask-app.local' http://localhost:8080/
+# Get service URL
+minikube service flask-app -n flask-app --url
 ```
 
 ---
@@ -140,26 +165,33 @@ curl -H 'Host: flask-app.local' http://localhost:8080/
 
 ### Check Application Status
 ```bash
-# Check all pods in flask-app namespace
+# Check all components
+kubectl get all -n flask-app
+
+# Check pods specifically
 kubectl get pods -n flask-app
-
-# Check deployment status
-kubectl get deployments -n flask-app
-
-# Check services
-kubectl get services -n flask-app
+# Should show:
+# flask-app-xxx         1/1     Running
+# mongodb-xxx           1/1     Running  
+# redis-master-xxx      1/1     Running
 ```
 
 ### View Logs
 ```bash
-# View Flask app logs
+# View Flask app logs (most common)
 kubectl logs -f -n flask-app deployment/flask-app
 
 # View logs from specific pod
 kubectl logs -f -n flask-app <pod-name>
 
-# View recent logs
+# View recent logs with tail
 kubectl logs -n flask-app deployment/flask-app --tail=50
+
+# View MongoDB logs
+kubectl logs -n flask-app deployment/mongodb
+
+# View Redis logs  
+kubectl logs -n flask-app deployment/redis-master
 ```
 
 ### Debug Pod Issues
@@ -167,11 +199,15 @@ kubectl logs -n flask-app deployment/flask-app --tail=50
 # Describe pod for detailed information
 kubectl describe pod -n flask-app <pod-name>
 
-# Execute commands in running pod
+# Execute commands in running Flask pod
 kubectl exec -it -n flask-app deployment/flask-app -- /bin/bash
 
 # Test connectivity from within pod
 kubectl exec -n flask-app deployment/flask-app -- curl -s http://localhost:5001/health
+
+# Check mounted secrets
+kubectl exec -n flask-app deployment/flask-app -- ls -la /app/secrets/
+# Should show 113 secret files
 ```
 
 ---
@@ -180,7 +216,12 @@ kubectl exec -n flask-app deployment/flask-app -- curl -s http://localhost:5001/
 
 ### 1. Health Check
 ```bash
-# Test Flask app health endpoint
+# Quick health test via orchestrator
+cd playbooks/00_local/
+python3 setup_local_dev.py
+# Choose option 10: Test deployment
+
+# Manual health check
 kubectl port-forward -n flask-app svc/flask-app 8080:80 &
 curl -s http://localhost:8080/health
 # Should return: {"status": "healthy"}
@@ -188,25 +229,30 @@ curl -s http://localhost:8080/health
 
 ### 2. Database Connectivity
 ```bash
-# Test MongoDB connection (if deployed)
+# Test MongoDB connection
 kubectl exec -n flask-app deployment/flask-app -- python3 -c "
 import socket
-socket.create_connection(('mongodb', 27017), timeout=5)
+socket.create_connection(('mongodb.flask-app.svc.cluster.local', 27017), timeout=5)
 print('MongoDB: Connected successfully')
 "
 
-# Test Redis connection (if deployed)
+# Test Redis connection
 kubectl exec -n flask-app deployment/flask-app -- python3 -c "
-import socket
-socket.create_connection(('redis-master', 6379), timeout=5)
+import socket  
+socket.create_connection(('redis-master-master.flask-app.svc.cluster.local', 6379), timeout=5)
 print('Redis: Connected successfully')
 "
 ```
 
-### 3. Environment Variables
+### 3. Secrets Verification
 ```bash
-# Check Flask app environment
-kubectl exec -n flask-app deployment/flask-app -- env | grep -E "(FLASK|MONGO|REDIS|VAULT)"
+# Check secret count
+kubectl get secret external -n flask-app -o jsonpath='{.data}' | jq '. | length'
+# Should return: 113
+
+# Check Flask app can access secrets
+kubectl exec -n flask-app deployment/flask-app -- ls /app/secrets/ | wc -l
+# Should return: 113
 ```
 
 ---
@@ -215,57 +261,58 @@ kubectl exec -n flask-app deployment/flask-app -- env | grep -E "(FLASK|MONGO|RE
 
 ### Start/Stop Cluster
 ```bash
-# Stop cluster (preserves state)
-k3d cluster stop local-dev
+# Stop minikube (preserves state)
+minikube stop
 
-# Start cluster
-k3d cluster start local-dev
+# Start minikube
+minikube start
 
 # Delete cluster completely
-k3d cluster delete local-dev
+minikube delete
+
+# Recreate cluster
+minikube start --driver=docker
 ```
 
 ### Reset Development Environment
 ```bash
-# Complete reset - delete and recreate cluster
-k3d cluster delete local-dev
-k3d cluster create local-dev --port "8080:80@loadbalancer"
+# Complete reset
+minikube delete
+minikube start --driver=docker
 
-# Rebuild and redeploy
-cd python_base_03/
-docker build -t flask-credit-system:latest .
-k3d image import flask-credit-system:latest -c local-dev
-
-cd ../playbooks/rop02/
-ansible-playbook -i inventory.ini 07_deploy_flask_docker.yml \
-  -e vm_name=local \
-  --connection=local
+# Redeploy everything
+cd playbooks/00_local/
+python3 setup_local_dev.py
+# Choose option 1: Complete setup
 ```
 
 ---
 
 ## ⚡ Performance Tips
 
-### Image Caching
+### Image Management
 ```bash
-# List imported images
-k3d image list -c local-dev
+# List images in minikube
+minikube image ls | grep flask
 
-# Import multiple images at once
-k3d image import flask-credit-system:latest redis:latest mongodb:latest -c local-dev
+# Load local image into minikube (done automatically by orchestrator)
+minikube image load flask-credit-system:latest
+
+# Check image is available
+minikube ssh docker images | grep flask
 ```
 
-### Resource Limits
+### Resource Monitoring
 ```bash
 # Check resource usage
 kubectl top pods -n flask-app
 kubectl top nodes
 
-# Adjust cluster resources if needed
-k3d cluster create local-dev \
-  --agents 2 \
-  --port "8080:80@loadbalancer" \
-  --k3s-arg "--disable=traefik@server:*"
+# Check persistent volumes
+kubectl get pv,pvc -n flask-app
+
+# Check storage usage
+kubectl exec -n flask-app deployment/mongodb -- df -h
 ```
 
 ---
@@ -274,57 +321,65 @@ k3d cluster create local-dev \
 
 ### Common Issues
 
-**Cluster won't start:**
+**Flask Pod ErrImageNeverPull:**
 ```bash
-# Check Docker is running
-docker ps
+# Solution: Load image into minikube
+minikube image load flask-credit-system:latest
 
-# Check k3d logs
-k3d cluster list
-docker logs k3d-local-dev-server-0
+# Check image is available
+minikube image ls | grep flask
+
+# Or rebuild via orchestrator (automatic loading)
+python3 setup_local_dev.py  # Choose option 6: Build Flask image
 ```
 
-**Image not found:**
+**MongoDB/Redis Pod Pending:**
 ```bash
-# Verify image was imported
-k3d image list -c local-dev
+# Check persistent volume claims
+kubectl get pvc -n flask-app
 
-# Re-import image
-k3d image import flask-credit-system:latest -c local-dev
+# Check storage class
+kubectl get storageclass
+
+# Should use 'standard' storage class in minikube
 ```
 
-**Pod stuck in Pending:**
+**Secrets Not Found:**
 ```bash
-# Check pod events
-kubectl describe pod -n flask-app <pod-name>
+# Check secret exists
+kubectl get secret external -n flask-app
 
-# Check node resources
-kubectl describe nodes
+# Check secret files count
+kubectl get secret external -n flask-app -o jsonpath='{.data}' | jq '. | length'
+
+# Recreate secrets
+cd playbooks/00_local/
+python3 setup_local_dev.py  # Choose option 3: Setup namespace
 ```
 
-**Can't access application:**
+**Can't Access Application:**
 ```bash
 # Check service endpoints
-kubectl get endpoints -n flask-app
+kubectl get endpoints -n flask-app flask-app
 
 # Check port forwarding
-kubectl port-forward -n flask-app svc/flask-app 8080:80
+kubectl port-forward -n flask-app svc/flask-app 8080:80 &
 netstat -an | grep 8080
+
+# Use minikube service
+minikube service flask-app -n flask-app
 ```
 
-### Useful Commands
+### Log Analysis
 ```bash
-# Get cluster info
-kubectl cluster-info
+# Flask app startup logs
+kubectl logs -n flask-app deployment/flask-app --tail=20
 
-# Get all resources in namespace
-kubectl get all -n flask-app
-
-# Check cluster events
-kubectl get events -n flask-app --sort-by='.lastTimestamp'
-
-# Export logs for debugging
-kubectl logs -n flask-app deployment/flask-app > flask-app.log
+# Look for key indicators:
+# ✅ "MainPlugin initialized successfully"
+# ✅ "Running on http://0.0.0.0:5001"  
+# ✅ "GET /health HTTP/1.1" 200
+# ⚠️  "VaultManager initialization failed" (expected - uses K8s secrets)
 ```
 
 ---
@@ -332,44 +387,117 @@ kubectl logs -n flask-app deployment/flask-app > flask-app.log
 ## 🎉 Benefits of This Setup
 
 ### ✅ Production Parity
-- **Same K3s version** as production
-- **Same deployment process** - no registry required
-- **Same manifests** - zero configuration changes
-- **Same networking** - Kubernetes services and ingress
+- **Exact same secrets** - 113 files from local filesystem
+- **Same deployment structure** - namespace, RBAC, services
+- **Same Vault fallback** - K8s secrets when Vault unavailable
+- **Same service discovery** - proper DNS resolution
 
 ### ⚡ Development Speed
-- **Fast cluster creation** - 30 seconds vs minutes
-- **Quick image updates** - no registry push/pull
-- **Instant feedback** - local development loop
-- **Easy debugging** - full kubectl access
+- **One-command deployment** - orchestrator handles everything
+- **Fast image updates** - automatic building and loading
+- **Quick feedback loop** - rebuild and test in minutes
+- **Easy debugging** - full kubectl access and logs
 
 ### 🔒 Security
 - **Isolated environment** - doesn't affect production
-- **Local-only** - no external dependencies
-- **Same security policies** - network policies, RBAC, etc.
+- **Same security model** - non-root containers, RBAC
+- **Local secrets** - no external secret management needed
+- **Network isolation** - Kubernetes network policies
 
-### 🧹 Clean Separation
-- **No conflicts** with production
-- **Easy cleanup** - delete cluster removes everything
-- **Multiple environments** - run different versions simultaneously
+### 🧹 Clean Management
+- **Orchestrated deployment** - consistent, repeatable setup
+- **Easy cleanup** - `minikube delete` removes everything
+- **Version control** - all config in Git
+- **Documentation** - step-by-step reproducible process
 
 ---
 
-## 📚 Next Steps
+## 📁 File Structure
 
-1. **Deploy supporting services** (MongoDB, Redis, Vault proxy)
-2. **Set up monitoring** (Prometheus, Grafana)
-3. **Configure CI/CD** pipeline for automated testing
-4. **Add integration tests** that run against k3d cluster
-5. **Set up development databases** with test data
+```
+app_dev_new_playbooks/
+├── playbooks/00_local/           # Local development playbooks
+│   ├── setup_local_dev.py        # 🚀 Main orchestrator script
+│   ├── 03_deploy_mongodb_local.yml
+│   ├── 04_deploy_redis_local.yml
+│   ├── 05_setup_flask_namespace_local.yml
+│   ├── 08_deploy_flask_docker_local.yml
+│   └── 09_update_flask_docker_local.yml
+├── python_base_03/               # Flask application
+│   ├── Dockerfile               # Flask image definition
+│   ├── app.py                   # Main Flask app
+│   └── core/                    # Application core
+└── secrets/                     # 113 secret files (local copy)
+    ├── auth_secret.txt
+    ├── database_config.txt
+    └── ... (111 more files)
+```
+
+---
+
+## 📚 Common Commands Reference
+
+### Quick Start
+```bash
+# Start fresh environment
+minikube start --driver=docker
+cd playbooks/00_local/
+python3 setup_local_dev.py  # Choose option 1
+
+# Access app
+kubectl port-forward -n flask-app svc/flask-app 8080:80 &
+curl http://localhost:8080/health
+```
+
+### Development Loop
+```bash
+# Edit code
+vim python_base_03/core/managers/some_manager.py
+
+# Update deployment
+python3 setup_local_dev.py  # Choose option 8
+
+# Check logs
+kubectl logs -f -n flask-app deployment/flask-app
+```
+
+### Debugging
+```bash
+# Check all components
+kubectl get all -n flask-app
+
+# Debug specific pod
+kubectl describe pod -n flask-app <pod-name>
+kubectl logs -n flask-app <pod-name>
+
+# Access pod shell
+kubectl exec -it -n flask-app deployment/flask-app -- /bin/bash
+```
+
+---
 
 ## 🔗 Related Documentation
 
 - [Flask Deployment Guide](../flask-app/FLASK_DEPLOYMENT_GUIDE.md)
 - [Production Playbooks](../../playbooks/rop02/README.md)
-- [k3d Documentation](https://k3d.io/)
-- [K3s Documentation](https://k3s.io/)
+- [minikube Documentation](https://minikube.sigs.k8s.io/)
+- [Kubernetes Documentation](https://kubernetes.io/docs/)
 
 ---
 
-**Happy Coding!** 🚀 Your local development environment now perfectly mirrors production. 
+## 🎯 Production Comparison
+
+| Component | Production (VPS) | Local (minikube) | Status |
+|-----------|------------------|------------------|---------|
+| **K8s** | k3s v1.31.5 | minikube v1.31.0 | ✅ Compatible |
+| **Secrets** | 113 files via Vault | 113 files via K8s | ✅ Identical |
+| **MongoDB** | Bitnami chart | Bitnami chart | ✅ Same |
+| **Redis** | Bitnami chart | Bitnami chart | ✅ Same |
+| **Flask** | Production image | Same image | ✅ Identical |
+| **Networking** | k3s networking | minikube networking | ✅ Compatible |
+| **Storage** | local-path | standard | ✅ Working |
+| **RBAC** | Production RBAC | Same RBAC | ✅ Identical |
+
+---
+
+**Happy Coding!** 🚀 Your local development environment now perfectly mirrors production with minikube reliability and the convenience of the Python orchestrator. 

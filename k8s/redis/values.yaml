@@ -4,7 +4,7 @@
 
 # Global configuration
 global:
-  storageClass: "local-path"
+  storageClass: "standard"
   redis:
     password: "7cNfJTOcyDxdhK5NZubMoE7KS"
 
@@ -23,7 +23,7 @@ master:
   # Persistence
   persistence:
     enabled: true
-    storageClass: "local-path"
+    storageClass: "standard"
     size: 5Gi
     accessModes:
       - ReadWriteOnce

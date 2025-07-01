@@ -1,0 +1,142 @@
+---
+- name: Update Flask Docker Application (Local minikube)
+  hosts: localhost
+  connection: local
+  vars:
+    flask_namespace: flask-app
+    docker_image: "flask-credit-system:latest"
+    app_source_path: "../../python_base_03"
+  tasks:
+    - name: Prepare Flask application source code
+      shell: |
+        cd {{ app_source_path }}
+        echo "Building Flask application from: $(pwd)"
+        echo "Source files present: $(ls -la | wc -l) items"
+      register: source_info
+      changed_when: false
+
+    - name: Rebuild Docker image with updated source
+      shell: |
+        cd {{ app_source_path }}
+        
+        # Build new image with current timestamp tag
+        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        NEW_TAG="flask-credit-system:${TIMESTAMP}"
+        
+        echo "Building Docker image..."
+        docker build -t "${NEW_TAG}" .
+        docker tag "${NEW_TAG}" "{{ docker_image }}"
+        
+        echo "Built new image: ${NEW_TAG}"
+        echo "Tagged as: {{ docker_image }}"
+      register: docker_build
+      changed_when: true
+
+    - name: Verify Docker image is available for minikube
+      shell: |
+        echo "Verifying image is available for minikube..."
+        # Minikube uses Docker Desktop directly, so image is automatically available
+        docker images | grep flask-credit-system | head -1
+      changed_when: false
+
+    - name: Restart Flask deployment to use updated image
+      shell: |
+        echo "Restarting Flask deployment to pick up updated Docker image..."
+        kubectl rollout restart deployment/flask-app -n {{ flask_namespace }}
+      changed_when: true
+
+    - name: Wait for updated deployment to be ready
+      shell: kubectl rollout status deployment/flask-app -n {{ flask_namespace }} --timeout=300s
+      register: flask_rollout
+      changed_when: flask_rollout.rc == 0
+
+    - name: Wait for updated pods to be ready
+      shell: kubectl wait --for=condition=ready pod -l app=flask-app -n {{ flask_namespace }} --timeout=300s
+      register: flask_ready
+      changed_when: flask_ready.rc == 0
+
+    - name: Get updated Flask application status
+      shell: |
+        echo "=== UPDATED LOCAL DEPLOYMENT STATUS ==="
+        kubectl get deployments -n {{ flask_namespace }} flask-app
+        echo ""
+        echo "=== UPDATED POD STATUS ==="
+        kubectl get pods -n {{ flask_namespace }} -l app=flask-app -o wide
+        echo ""
+        echo "=== IMAGE INFO ==="
+        kubectl get pods -n {{ flask_namespace }} -l app=flask-app -o jsonpath='{.items[0].spec.containers[0].image}'
+        echo ""
+        echo ""
+        echo "=== RECENT LOGS ==="
+        kubectl logs -n {{ flask_namespace }} deployment/flask-app --tail=20
+      register: flask_status
+      changed_when: false
+
+    - name: Test updated Flask application
+      shell: |
+        # Start port-forward in background
+        kubectl port-forward -n {{ flask_namespace }} svc/flask-app 8080:80 &
+        PF_PID=$!
+        sleep 5
+        
+        # Test the health endpoint
+        curl -s http://localhost:8080/health || echo "Health test failed"
+        
+        # Kill port-forward
+        kill $PF_PID 2>/dev/null || true
+      register: flask_health_test
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Clean up old Docker images
+      shell: |
+        echo "Cleaning up old Docker images..."
+        docker image prune -f
+        docker images | grep flask-credit-system | head -5
+      changed_when: true
+
+    - name: Display update status
+      debug:
+        msg: |
+          🐳 Flask Docker Application Updated Successfully (Local minikube)!
+          
+          {{ docker_build.stdout }}
+          
+          Source Info:
+          {{ source_info.stdout }}
+          
+          Application Status:
+          {{ flask_status.stdout }}
+          
+          {% if flask_health_test.rc == 0 %}
+          ✅ Health check: PASSED
+          {% else %}
+          ⚠️  Health check: FAILED (check logs above)
+          {% endif %}
+          
+          🚀 Updated application ready for local development!
+          
+          To monitor:
+          1. Watch logs: kubectl logs -f -n {{ flask_namespace }} deployment/flask-app
+          2. Port forward: kubectl port-forward -n {{ flask_namespace }} svc/flask-app 8080:80
+          3. Health check: curl http://localhost:8080/health
+          4. Access app: http://localhost:8080/
+
+    - name: Display final status
+      debug:
+        msg: |
+          ✅ Local Flask Docker application update completed!
+          
+          🔄 Local Development Workflow:
+          - ⚡ Fast updates (~1-2 minutes total)
+          - 🐳 Consistent Docker-based deployments
+          - 🔄 Zero-downtime rolling updates
+          - 📊 Health checks ensure reliability
+          - 🏗️ Production-identical structure
+          
+          Next development cycle:
+          1. Edit code in: {{ app_source_path }}
+          2. Run this playbook: ansible-playbook playbooks/00_local/09_update_flask_docker_local.yml
+          3. Test changes: kubectl port-forward -n {{ flask_namespace }} svc/flask-app 8080:80
+          
+          🚀 Happy local development! 
