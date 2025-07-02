@@ -69,20 +69,29 @@ class ConnectionAPI(BaseModule):
     def initialize_database(self):
         """Ensure required collections exist in the database."""
         custom_log("⚙️ Initializing database collections...")
-        self._create_users_collection()
-        custom_log("✅ Database collections verified.")
+        if self._create_users_collection():
+            custom_log("✅ Database collections verified.")
+        else:
+            custom_log("⚠️ Database collections initialization skipped (database unavailable)")
 
-    def _create_users_collection(self):
+    def _create_users_collection(self) -> bool:
         """Create users collection with proper indexes."""
         try:
+            # Check if database is available
+            if not self.admin_db.available:
+                custom_log("⚠️ Database unavailable - skipping users collection creation")
+                return False
+                
             # Create users collection with indexes
             self.admin_db.db.users.create_index("email", unique=True)
             self.admin_db.db.users.create_index("username")
             self.admin_db.db.users.create_index("created_at")
             custom_log("✅ Users collection and indexes created")
+            return True
         except Exception as e:
-            custom_log(f"❌ Error creating users collection: {e}")
-            raise
+            custom_log(f"⚠️ Could not create users collection: {e}")
+            custom_log("⚠️ Database operations will be limited - suitable for local development")
+            return False
 
     def home(self):
         """Handle the root route."""
@@ -404,7 +413,7 @@ class ConnectionAPI(BaseModule):
         try:
             # Check database connections
             db_healthy = self.db_manager.check_connection()
-            health_status['details']['database'] = 'healthy' if db_healthy else 'unhealthy'
+            health_status['details']['database'] = 'healthy' if db_healthy else 'unavailable'
             
             # Check Redis connection
             redis_healthy = self.redis_manager.ping()
@@ -413,9 +422,15 @@ class ConnectionAPI(BaseModule):
             # Check JWT manager
             health_status['details']['jwt_manager'] = 'healthy'
             
-            # Overall status
-            if not (db_healthy and redis_healthy):
+            # Overall status - app can run with limited functionality if only database is unavailable
+            if not redis_healthy:
                 health_status['status'] = 'unhealthy'
+                health_status['details']['reason'] = 'Redis connection required for core functionality'
+            elif not db_healthy:
+                health_status['status'] = 'degraded'
+                health_status['details']['reason'] = 'Database unavailable - running with limited functionality'
+            else:
+                health_status['status'] = 'healthy'
                 
         except Exception as e:
             health_status['status'] = 'unhealthy'
