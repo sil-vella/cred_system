@@ -23,13 +23,24 @@ class ConnectionAPI(BaseModule):
         # Set dependencies (this module has no dependencies)
         self.dependencies = []
         
-        # Initialize database managers with different roles
-        self.db_manager = DatabaseManager(role="read_write")  # For write operations
-        self.analytics_db = DatabaseManager(role="read_only")  # For read operations
-        self.admin_db = DatabaseManager(role="admin")  # For administrative tasks
+        # Use centralized managers from app_manager instead of creating new instances
+        if app_manager:
+            self.db_manager = app_manager.get_db_manager(role="read_write")
+            self.analytics_db = app_manager.get_db_manager(role="read_only")
+            self.admin_db = app_manager.get_db_manager(role="admin")
+            self.redis_manager = app_manager.get_redis_manager()
+        else:
+            # Fallback for testing or when app_manager is not provided
+            self.db_manager = DatabaseManager(role="read_write")
+            self.analytics_db = DatabaseManager(role="read_only")
+            self.admin_db = DatabaseManager(role="admin")
+            self.redis_manager = RedisManager()
         
-        self.redis_manager = RedisManager()  # Initialize Redis manager
-        self.jwt_manager = JWTManager()  # Initialize JWT manager
+        # Use centralized JWT manager from app_manager if available
+        if app_manager:
+            self.jwt_manager = JWTManager(redis_manager=self.redis_manager)
+        else:
+            self.jwt_manager = JWTManager()  # Fallback for testing
         self.error_handler = ErrorHandler()  # Initialize error handler
         
         # Session management settings
@@ -37,7 +48,7 @@ class ConnectionAPI(BaseModule):
         self.max_concurrent_sessions = 1  # Only one session allowed per user
         self.session_check_interval = 300  # 5 minutes in seconds
 
-        custom_log(f"ConnectionAPI module created with managers initialized")
+        custom_log(f"ConnectionAPI module created with shared managers")
 
     def initialize(self, app):
         """Initialize the ConnectionAPI with a Flask app."""
@@ -64,32 +75,35 @@ class ConnectionAPI(BaseModule):
         self._register_route_helper("/", self.home, methods=["GET"])
         self._register_route_helper("/auth/refresh", self.refresh_token_endpoint, methods=["POST"])
         
+        # Register queue API blueprint
+        from core.modules.queue_api import queue_api
+        self.app.register_blueprint(queue_api)
+        custom_log("✅ Queue API blueprint registered")
+        
         custom_log(f"ConnectionAPI registered {len(self.registered_routes)} routes")
 
     def initialize_database(self):
-        """Ensure required collections exist in the database."""
-        custom_log("⚙️ Initializing database collections...")
-        if self._create_users_collection():
-            custom_log("✅ Database collections verified.")
+        """Verify database connection without creating collections or indexes."""
+        custom_log("⚙️ Verifying database connection...")
+        if self._verify_database_connection():
+            custom_log("✅ Database connection verified.")
         else:
-            custom_log("⚠️ Database collections initialization skipped (database unavailable)")
+            custom_log("⚠️ Database connection unavailable - running with limited functionality")
 
-    def _create_users_collection(self) -> bool:
-        """Create users collection with proper indexes."""
+    def _verify_database_connection(self) -> bool:
+        """Verify database connection without creating anything."""
         try:
             # Check if database is available
             if not self.admin_db.available:
-                custom_log("⚠️ Database unavailable - skipping users collection creation")
+                custom_log("⚠️ Database unavailable - connection verification skipped")
                 return False
                 
-            # Create users collection with indexes
-            self.admin_db.db.users.create_index("email", unique=True)
-            self.admin_db.db.users.create_index("username")
-            self.admin_db.db.users.create_index("created_at")
-            custom_log("✅ Users collection and indexes created")
+            # Simple connection test - just ping the database
+            self.admin_db.db.command('ping')
+            custom_log("✅ Database connection verified successfully")
             return True
         except Exception as e:
-            custom_log(f"⚠️ Could not create users collection: {e}")
+            custom_log(f"⚠️ Database connection verification failed: {e}")
             custom_log("⚠️ Database operations will be limited - suitable for local development")
             return False
 

@@ -126,25 +126,27 @@ def check_namespace():
         return False
 
 def build_flask_image():
-    """Build Flask Docker image"""
+    """Build Flask Docker image locally and load into minikube"""
     logger.info("🐳 Building Flask Docker image...")
     print("\n🐳 Building Flask Docker image...")
     
-    # Check if image already exists
+    # Clean up old images first
     try:
-        result = run_command("docker images flask-credit-system:latest")
-        if "flask-credit-system" in result:
-            response = input("Flask image already exists. Rebuild? (y/N): ").strip().lower()
-            if response != 'y':
-                logger.info("✅ Using existing Flask image")
-                return
+        logger.info("🧹 Cleaning up old Flask images...")
+        print("🧹 Cleaning up old Flask images...")
+        run_command("docker rmi flask-credit-system:latest --force 2>/dev/null || true", shell=True)
+        run_command("docker image prune -f", shell=True)
+        logger.info("✅ Old images cleaned up")
+        print("✅ Old images cleaned up")
     except:
         pass
     
-    # Build the image
+    # Build the image with --no-cache
     try:
         os.chdir("../../python_base_04_k8s")
-        run_command("docker build -t flask-credit-system:latest .", shell=True)
+        
+        # Build local image with --no-cache
+        run_command("docker build --no-cache -t flask-credit-system:latest .", shell=True)
         logger.info("✅ Flask image built successfully")
         print("✅ Flask image built: flask-credit-system:latest")
         

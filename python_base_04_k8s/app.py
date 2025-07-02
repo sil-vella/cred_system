@@ -71,3 +71,4 @@ if __name__ == "__main__":
     host = os.getenv('FLASK_HOST', '0.0.0.0')
     port = int(os.getenv('FLASK_PORT', 5001))
     app_manager.run(app, host=host, port=port)
+# Test comment from watcher - Wed Jul  2 18:40:27 CEST 2025

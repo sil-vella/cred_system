@@ -16,6 +16,7 @@ import logging
 from apscheduler.schedulers.background import BackgroundScheduler
 from core.managers.database_manager import DatabaseManager
 from core.managers.redis_manager import RedisManager
+from core.managers.queue_manager import QueueManager
 
 
 class AppManager:
@@ -25,13 +26,17 @@ class AppManager:
         self.services_manager = ServicesManager()
         self.hooks_manager = HooksManager()
         self.module_manager = ModuleManager()  # Primary orchestrator
-        self.rate_limiter_manager = RateLimiterManager()
         self.template_dirs = []  # List to track template directories
         self.flask_app = None  # Flask app reference
         self.logger = logging.getLogger(__name__)
         self.scheduler = None
+        
+        # Centralized managers - single instances for all modules
         self.db_manager = None
+        self.analytics_db = None
+        self.admin_db = None
         self.redis_manager = None
+        self.rate_limiter_manager = None
         self._initialized = False
 
         custom_log("AppManager instance created.")
@@ -62,6 +67,25 @@ class AppManager:
             self.logger.error(f"Redis health check failed: {e}")
             return False
 
+    def get_db_manager(self, role="read_write"):
+        """Get the appropriate database manager instance."""
+        if role == "read_write":
+            return self.db_manager
+        elif role == "read_only":
+            return self.analytics_db
+        elif role == "admin":
+            return self.admin_db
+        else:
+            raise ValueError(f"Unknown database role: {role}")
+
+    def get_redis_manager(self):
+        """Get the Redis manager instance."""
+        return self.redis_manager
+
+    def get_queue_manager(self):
+        """Get the queue manager instance."""
+        return self.queue_manager
+
     @log_function_call
     def initialize(self, app):
         """
@@ -78,10 +102,15 @@ class AppManager:
         self.scheduler = BackgroundScheduler()
         self.scheduler.start()
 
-        # Initialize database and Redis managers
+        # Initialize centralized database and Redis managers
         self.db_manager = DatabaseManager(role="read_write")
+        self.analytics_db = DatabaseManager(role="read_only")
+        self.admin_db = DatabaseManager(role="admin")
         self.redis_manager = RedisManager()
-        custom_log("✅ Database and Redis managers initialized")
+        self.rate_limiter_manager = RateLimiterManager()
+        self.rate_limiter_manager.set_redis_manager(self.redis_manager)
+        self.queue_manager = QueueManager()
+        custom_log("✅ Centralized database, Redis, and Queue managers initialized")
 
         # Initialize services
         self.services_manager.initialize_services()
@@ -99,6 +128,9 @@ class AppManager:
 
         # Set up monitoring middleware
         self._setup_monitoring()
+        
+        # Start queue workers
+        self.queue_manager.start_workers()
         
         # Mark as initialized
         self._initialized = True

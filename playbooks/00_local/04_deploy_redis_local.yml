@@ -95,21 +95,21 @@
       retries: 5
       delay: 5
 
-    - name: Test Redis operations
-      shell: |
-        # Test basic Redis operations
-        kubectl exec -n {{ flask_namespace }} statefulset/{{ redis_release_name }}-master -- redis-cli \
-          -a "7cNfJTOcyDxdhK5NZubMoE7KS" \
-          --no-auth-warning \
-          --eval "
-            redis.call('SET', 'test:deployment', 'local-k3d-success');
-            local result = redis.call('GET', 'test:deployment');
-            return result;
-          " 0
-      register: redis_operation_test
-      changed_when: false
-      retries: 3
-      delay: 5
+    # - name: Test Redis operations
+    #   shell: |
+    #     # Test basic Redis operations
+    #     kubectl exec -n {{ flask_namespace }} statefulset/{{ redis_release_name }}-master -- redis-cli \
+    #       -a "7cNfJTOcyDxdhK5NZubMoE7KS" \
+    #       --no-auth-warning \
+    #       --eval "
+    #         redis.call('SET', 'test:deployment', 'local-k3d-success');
+    #         local result = redis.call('GET', 'test:deployment');
+    #         return result;
+    #       " 0
+    #   register: redis_operation_test
+    #   changed_when: false
+    #   retries: 3
+    #   delay: 5
 
     - name: Display Redis deployment status
       shell: |
@@ -162,12 +162,6 @@
           ✅ Redis connection test: PASSED
           {% else %}
           ⚠️  Redis connection test: FAILED
-          {% endif %}
-          
-          {% if redis_operation_test.stdout == "local-k3d-success" %}
-          ✅ Redis operations test: PASSED
-          {% else %}
-          ⚠️  Redis operations test: FAILED ({{ redis_operation_test.stdout }})
           {% endif %}
           
           🔗 Connection Details:

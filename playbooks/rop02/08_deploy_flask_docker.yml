@@ -109,9 +109,6 @@
                 - name: core-volume
                   mountPath: /app/core
                   readOnly: true
-                - name: plugins-volume
-                  mountPath: /app/plugins
-                  readOnly: true
                 - name: static-volume
                   mountPath: /app/static
                   readOnly: true
@@ -162,10 +159,6 @@
               - name: core-volume
                 hostPath:
                   path: /home/{{ new_user }}/python_base_04_k8s/core
-                  type: Directory
-              - name: plugins-volume
-                hostPath:
-                  path: /home/{{ new_user }}/python_base_04_k8s/plugins
                   type: Directory
               - name: static-volume
                 hostPath:

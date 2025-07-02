@@ -40,5 +40,5 @@ EXPOSE 5001
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:5001/health || exit 1
 
-# Start Flask application
-CMD ["python", "app.py"] 
+# Start Flask application with Gunicorn (production mode)
+CMD ["gunicorn", "--bind", "0.0.0.0:5001", "--workers", "1", "--timeout", "120", "--keep-alive", "5", "app:app"] 

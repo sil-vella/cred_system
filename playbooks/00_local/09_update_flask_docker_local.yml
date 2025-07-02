@@ -24,7 +24,7 @@
         NEW_TAG="flask-credit-system:${TIMESTAMP}"
         
         echo "Building Docker image..."
-        docker build -t "${NEW_TAG}" .
+        docker build --no-cache -t "${NEW_TAG}" .
         docker tag "${NEW_TAG}" "{{ docker_image }}"
         
         echo "Built new image: ${NEW_TAG}"
@@ -41,7 +41,7 @@
 
     - name: Restart Flask deployment to use updated image
       shell: |
-        echo "Restarting Flask deployment to pick up updated Docker image..."
+        echo "Restarting Flask deployment to pick up updated DockerHub image..."
         kubectl rollout restart deployment/flask-app -n {{ flask_namespace }}
       changed_when: true
 

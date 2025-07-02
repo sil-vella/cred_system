@@ -653,13 +653,59 @@ class RedisManager:
             custom_log("✅ Redis connection pool closed")
 
     def get_connection_count(self):
-        """Get the current number of active Redis connections."""
+        """Get the number of active connections in the pool."""
+        if self.connection_pool:
+            return self.connection_pool._created_connections
+        return 0
+
+    # Sorted Set operations for queue management
+    def zadd(self, key, mapping, *args):
+        """Add one or more members to a sorted set, or update its score if it already exists."""
         try:
-            if not self.connection_pool:
-                return 0
-            # Get connection pool info
-            pool_info = self.connection_pool.connection_kwargs
-            return len(self.connection_pool._available_connections) + len(self.connection_pool._in_use_connections)
+            secure_key = self._generate_secure_key(key, *args)
+            return self.redis.zadd(secure_key, mapping)
         except Exception as e:
-            self.logger.error(f"Failed to get Redis connection count: {e}")
-            return 0 
+            custom_log(f"Error in zadd: {str(e)}")
+            raise
+
+    def zrangebyscore(self, key, min_score, max_score, start=0, num=None, *args):
+        """Return a range of members in a sorted set, by score."""
+        try:
+            secure_key = self._generate_secure_key(key, *args)
+            if num is not None:
+                return self.redis.zrangebyscore(secure_key, min_score, max_score, start=start, num=num)
+            else:
+                return self.redis.zrangebyscore(secure_key, min_score, max_score, start=start)
+        except Exception as e:
+            custom_log(f"Error in zrangebyscore: {str(e)}")
+            raise
+
+    def zrem(self, key, *members, **kwargs):
+        """Remove one or more members from a sorted set."""
+        try:
+            secure_key = self._generate_secure_key(key, *kwargs.get('args', []))
+            return self.redis.zrem(secure_key, *members)
+        except Exception as e:
+            custom_log(f"Error in zrem: {str(e)}")
+            raise
+
+    def zcard(self, key, *args):
+        """Get the number of members in a sorted set."""
+        try:
+            secure_key = self._generate_secure_key(key, *args)
+            return self.redis.zcard(secure_key)
+        except Exception as e:
+            custom_log(f"Error in zcard: {str(e)}")
+            raise
+
+    def keys(self, pattern, *args):
+        """Find all keys matching the given pattern."""
+        try:
+            # For keys pattern matching, we need to handle the pattern differently
+            # since we're using secure key generation
+            # This is a simplified implementation - in production you might want to store
+            # a mapping of patterns to actual keys
+            return self.redis.keys(pattern)
+        except Exception as e:
+            custom_log(f"Error in keys: {str(e)}")
+            raise 

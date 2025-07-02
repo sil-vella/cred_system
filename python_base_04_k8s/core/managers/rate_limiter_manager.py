@@ -16,12 +16,18 @@ class RateLimiterManager:
             cls._instance = super(RateLimiterManager, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self, redis_manager=None):
         if not RateLimiterManager._initialized:
-            self.redis_manager = RedisManager()
+            # Use provided redis_manager or create a new one
+            self.redis_manager = redis_manager if redis_manager else RedisManager()
             self._setup_config()
             RateLimiterManager._initialized = True
             custom_log("RateLimiterManager initialized")
+
+    def set_redis_manager(self, redis_manager):
+        """Set the Redis manager instance (for dependency injection)."""
+        self.redis_manager = redis_manager
+        custom_log("RateLimiterManager Redis manager updated")
 
     def _setup_config(self):
         """Set up rate limiting configuration from Config."""

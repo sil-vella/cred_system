@@ -14,8 +14,9 @@ class TokenType(Enum):
     REFRESH = "refresh"
 
 class JWTManager:
-    def __init__(self):
-        self.redis_manager = RedisManager()
+    def __init__(self, redis_manager=None):
+        # Use provided redis_manager or create a new one
+        self.redis_manager = redis_manager if redis_manager else RedisManager()
         self.secret_key = Config.JWT_SECRET_KEY
         self.algorithm = Config.JWT_ALGORITHM
         # Shorter token lifetimes

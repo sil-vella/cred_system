@@ -49,7 +49,7 @@
               containers:
               - name: flask-app
                 image: {{ docker_image }}
-                imagePullPolicy: Never  # Use local image
+                imagePullPolicy: Never
                 ports:
                 - containerPort: 5001
                 env:

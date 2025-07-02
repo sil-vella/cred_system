@@ -170,7 +170,7 @@ class DatabaseManager:
         encrypted_data = data.copy()
         for field in Config.SENSITIVE_FIELDS:
             if field in encrypted_data and encrypted_data[field] is not None:
-                encrypted_data[field] = self.encryption_manager.encrypt_field(
+                encrypted_data[field] = self.encryption_manager.encrypt_data(
                     encrypted_data[field]
                 )
         return encrypted_data
@@ -180,7 +180,7 @@ class DatabaseManager:
         decrypted_data = data.copy()
         for field in Config.SENSITIVE_FIELDS:
             if field in decrypted_data and decrypted_data[field] is not None:
-                decrypted_data[field] = self.encryption_manager.decrypt_field(
+                decrypted_data[field] = self.encryption_manager.decrypt_data(
                     decrypted_data[field]
                 )
         return decrypted_data
