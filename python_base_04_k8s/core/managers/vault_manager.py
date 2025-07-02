@@ -12,6 +12,8 @@ class VaultManager:
     
     This manager handles authentication and secret retrieval from Vault
     using the REST API (no hvac dependency required).
+    
+    Gracefully handles missing configuration for local development.
     """
     
     def __init__(self):
@@ -27,25 +29,41 @@ class VaultManager:
         self.client_token = None
         self.token_expiry = None
         self.lease_duration = None
+        self.available = False  # Track if Vault is available for use
         
-        # Validate configuration
-        self._validate_config()
-        
-        # Initial authentication
-        self._authenticate()
-        
-        self.logger.info("✅ VaultManager initialized successfully")
+        # Try to validate configuration and authenticate
+        if self._validate_config():
+            if self._authenticate():
+                self.available = True
+                self.logger.info("✅ VaultManager initialized successfully")
+            else:
+                self.logger.warning("⚠️ VaultManager initialized but authentication failed - using file-based secrets")
+        else:
+            self.logger.warning("⚠️ VaultManager initialized but configuration incomplete - using file-based secrets")
     
-    def _validate_config(self):
-        """Validate Vault configuration."""
-        if not self.role_id:
-            raise ValueError("VAULT_ROLE_ID environment variable not set")
-        if not self.secret_id:
-            raise ValueError("VAULT_SECRET_ID environment variable not set")
-        if not self.vault_addr:
-            raise ValueError("VAULT_ADDR environment variable not set")
+    def _validate_config(self) -> bool:
+        """
+        Validate Vault configuration.
         
-        self.logger.info(f"Vault configuration validated: {self.vault_addr}")
+        Returns:
+            bool: True if configuration is valid, False otherwise
+        """
+        missing_vars = []
+        
+        if not self.role_id:
+            missing_vars.append("VAULT_ROLE_ID")
+        if not self.secret_id:
+            missing_vars.append("VAULT_SECRET_ID")
+        if not self.vault_addr:
+            missing_vars.append("VAULT_ADDR")
+        
+        if missing_vars:
+            self.logger.warning(f"⚠️ Missing Vault environment variables: {', '.join(missing_vars)}")
+            self.logger.warning("⚠️ VaultManager will be unavailable - falling back to file-based secrets")
+            return False
+        
+        self.logger.info(f"✅ Vault configuration validated: {self.vault_addr}")
+        return True
     
     def _authenticate(self) -> bool:
         """
@@ -79,15 +97,14 @@ class VaultManager:
                 self.logger.info(f"✅ Vault authentication successful (lease: {self.lease_duration}s)")
                 return True
             else:
-                self.logger.error(f"❌ Vault authentication failed: {response.status_code}")
-                self.logger.error(f"Response: {response.text}")
+                self.logger.warning(f"⚠️ Vault authentication failed: {response.status_code} - {response.text}")
                 return False
                 
         except requests.exceptions.RequestException as e:
-            self.logger.error(f"❌ Vault authentication request failed: {e}")
+            self.logger.warning(f"⚠️ Vault authentication request failed: {e}")
             return False
         except Exception as e:
-            self.logger.error(f"❌ Vault authentication error: {e}")
+            self.logger.warning(f"⚠️ Vault authentication error: {e}")
             return False
     
     def _ensure_authenticated(self) -> bool:
@@ -97,6 +114,9 @@ class VaultManager:
         Returns:
             bool: True if authenticated, False otherwise
         """
+        if not self.available:
+            return False
+            
         # Check if token exists and is not expired
         if (self.client_token and 
             self.token_expiry and 
@@ -105,7 +125,11 @@ class VaultManager:
         
         # Re-authenticate if token is missing or expired
         self.logger.info("Token expired or missing, re-authenticating...")
-        return self._authenticate()
+        success = self._authenticate()
+        if not success:
+            self.available = False
+            self.logger.warning("⚠️ Vault re-authentication failed - marking as unavailable")
+        return success
     
     def get_secret(self, path: str) -> Optional[Dict[str, Any]]:
         """
@@ -115,10 +139,13 @@ class VaultManager:
             path (str): Secret path (e.g., 'flask-app/mongodb')
             
         Returns:
-            Optional[Dict[str, Any]]: Secret data or None if not found
+            Optional[Dict[str, Any]]: Secret data or None if not found or Vault unavailable
         """
+        if not self.available:
+            return None
+            
         if not self._ensure_authenticated():
-            self.logger.error("❌ Cannot retrieve secret: authentication failed")
+            self.logger.warning("⚠️ Cannot retrieve secret: authentication failed")
             return None
         
         try:
@@ -148,15 +175,14 @@ class VaultManager:
                 self.logger.warning(f"⚠️ Secret not found: {path}")
                 return None
             else:
-                self.logger.error(f"❌ Failed to retrieve secret {path}: {response.status_code}")
-                self.logger.error(f"Response: {response.text}")
+                self.logger.warning(f"⚠️ Failed to retrieve secret {path}: {response.status_code}")
                 return None
                 
         except requests.exceptions.RequestException as e:
-            self.logger.error(f"❌ Request failed for secret {path}: {e}")
+            self.logger.warning(f"⚠️ Request failed for secret {path}: {e}")
             return None
         except Exception as e:
-            self.logger.error(f"❌ Error retrieving secret {path}: {e}")
+            self.logger.warning(f"⚠️ Error retrieving secret {path}: {e}")
             return None
     
     def get_secret_value(self, path: str, key: str, default: Any = None) -> Any:
@@ -171,6 +197,9 @@ class VaultManager:
         Returns:
             Any: Secret value or default
         """
+        if not self.available:
+            return default
+            
         secret = self.get_secret(path)
         if secret and key in secret:
             return secret[key]
@@ -178,18 +207,26 @@ class VaultManager:
     
     def get_mongodb_secrets(self) -> Optional[Dict[str, Any]]:
         """Get MongoDB secrets from Vault."""
+        if not self.available:
+            return None
         return self.get_secret('flask-app/mongodb')
     
     def get_redis_secrets(self) -> Optional[Dict[str, Any]]:
         """Get Redis secrets from Vault."""
+        if not self.available:
+            return None
         return self.get_secret('flask-app/redis')
     
     def get_app_secrets(self) -> Optional[Dict[str, Any]]:
         """Get Flask application secrets from Vault."""
+        if not self.available:
+            return None
         return self.get_secret('flask-app/app')
     
     def get_monitoring_secrets(self) -> Optional[Dict[str, Any]]:
         """Get monitoring secrets from Vault."""
+        if not self.available:
+            return None
         return self.get_secret('flask-app/monitoring')
     
     def health_check(self) -> bool:
@@ -199,6 +236,9 @@ class VaultManager:
         Returns:
             bool: True if Vault is healthy, False otherwise
         """
+        if not self.available:
+            return False
+            
         try:
             response = requests.get(
                 f'{self.vault_addr}/v1/sys/health',
@@ -214,14 +254,14 @@ class VaultManager:
                     self.logger.info("✅ Vault health check passed")
                     return True
             else:
-                self.logger.error(f"❌ Vault health check failed: {response.status_code}")
+                self.logger.warning(f"⚠️ Vault health check failed: {response.status_code}")
                 return False
                 
         except requests.exceptions.RequestException as e:
-            self.logger.error(f"❌ Vault health check request failed: {e}")
+            self.logger.warning(f"⚠️ Vault health check request failed: {e}")
             return False
         except Exception as e:
-            self.logger.error(f"❌ Vault health check error: {e}")
+            self.logger.warning(f"⚠️ Vault health check error: {e}")
             return False
     
     def get_connection_info(self) -> Dict[str, Any]:
@@ -233,6 +273,7 @@ class VaultManager:
         """
         return {
             'vault_addr': self.vault_addr,
+            'available': self.available,
             'authenticated': self.client_token is not None,
             'token_expiry': self.token_expiry.isoformat() if self.token_expiry else None,
             'lease_duration': self.lease_duration,
