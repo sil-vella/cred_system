@@ -43,6 +43,11 @@ def health_check():
         if not app_manager.check_redis_connection():
             return {'status': 'unhealthy', 'reason': 'Redis connection failed'}, 503
         
+        # Check state manager status
+        state_manager_health = app_manager.state_manager.health_check()
+        if state_manager_health.get('status') != 'healthy':
+            return {'status': 'unhealthy', 'reason': 'State manager unhealthy'}, 503
+        
         # Check module status
         module_status = app_manager.module_manager.get_module_status()
         unhealthy_modules = []
@@ -61,7 +66,8 @@ def health_check():
         return {
             'status': 'healthy',
             'modules_initialized': module_status.get('initialized_modules', 0),
-            'total_modules': module_status.get('total_modules', 0)
+            'total_modules': module_status.get('total_modules', 0),
+            'state_manager': state_manager_health
         }, 200
     except Exception as e:
         return {'status': 'unhealthy', 'reason': str(e)}, 503

@@ -1,0 +1,345 @@
+---
+- name: Setup Database Structure for Credit System (Local k3d)
+  hosts: localhost
+  connection: local
+  vars:
+    flask_namespace: "flask-app"
+    mongodb_service: "mongodb"
+    database_name: "credit_system"
+    app_username: "credit_app_user"
+    app_password: "6R3jjsvVhIRP20zMiHdkBzNKx"
+    
+    # MongoDB connection details
+    mongodb_host: "{{ mongodb_service }}.{{ flask_namespace }}.svc.cluster.local"
+    mongodb_port: "27017"
+    mongodb_auth_source: "{{ database_name }}"
+    
+    # Collections to create
+    collections:
+      - name: "users"
+        module: "User Management"
+        indexes:
+          - key: {"email": 1}
+            unique: true
+            name: "email_unique"
+          - key: {"username": 1}
+            unique: true
+            name: "username_unique"
+          - key: {"status": 1}
+            name: "status_index"
+          - key: {"created_at": 1}
+            name: "created_at_index"
+      
+      - name: "wallets"
+        module: "Wallet"
+        indexes:
+          - key: {"user_id": 1}
+            unique: true
+            name: "user_id_unique"
+          - key: {"balance": 1}
+            name: "balance_index"
+          - key: {"updated_at": 1}
+            name: "updated_at_index"
+      
+      - name: "transactions"
+        module: "Transactions"
+        indexes:
+          - key: {"user_id": 1}
+            name: "user_id_index"
+          - key: {"type": 1}
+            name: "type_index"
+          - key: {"timestamp": 1}
+            name: "timestamp_index"
+          - key: {"user_id": 1, "timestamp": -1}
+            name: "user_timestamp_index"
+          - key: {"ref_id": 1}
+            name: "ref_id_index"
+      
+      - name: "purchases"
+        module: "Purchases"
+        indexes:
+          - key: {"user_id": 1}
+            name: "user_id_index"
+          - key: {"provider": 1}
+            name: "provider_index"
+          - key: {"status": 1}
+            name: "status_index"
+          - key: {"created_at": 1}
+            name: "created_at_index"
+          - key: {"user_id": 1, "created_at": -1}
+            name: "user_created_index"
+      
+      - name: "payment_providers"
+        module: "Payments"
+        indexes:
+          - key: {"user_id": 1}
+            name: "user_id_index"
+          - key: {"provider": 1}
+            name: "provider_index"
+          - key: {"purchase_token": 1}
+            unique: true
+            name: "purchase_token_unique"
+          - key: {"linked_purchase_id": 1}
+            name: "linked_purchase_index"
+          - key: {"status": 1}
+            name: "status_index"
+          - key: {"validated_at": 1}
+            name: "validated_at_index"
+      
+      - name: "audit_logs"
+        module: "Audit/Admin"
+        indexes:
+          - key: {"user_id": 1}
+            name: "user_id_index"
+          - key: {"action": 1}
+            name: "action_index"
+          - key: {"admin_id": 1}
+            name: "admin_id_index"
+          - key: {"timestamp": 1}
+            name: "timestamp_index"
+          - key: {"user_id": 1, "timestamp": -1}
+            name: "user_timestamp_index"
+
+  tasks:
+    - name: Verify MongoDB is running
+      shell: |
+        kubectl get pods -n {{ flask_namespace }} -l app.kubernetes.io/name=mongodb --no-headers | grep Running
+      register: mongodb_pod_status
+      changed_when: false
+      failed_when: mongodb_pod_status.rc != 0
+
+    - name: Wait for MongoDB to be ready
+      shell: kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mongodb -n {{ flask_namespace }} --timeout=60s
+      changed_when: false
+
+    - name: Execute database setup commands directly in MongoDB container
+      shell: |
+        kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_service }} -- \
+          mongosh "mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}" \
+          --eval "
+            print('🚀 Starting Credit System Database Setup...');
+            
+            // Switch to the credit_system database
+            db = db.getSiblingDB('{{ database_name }}');
+            print('📊 Using database: ' + db.getName());
+            
+            // Create collections
+            const collections = ['users', 'wallets', 'transactions', 'purchases', 'payment_providers', 'audit_logs'];
+            const modules = ['User Management', 'Wallet', 'Transactions', 'Purchases', 'Payments', 'Audit/Admin'];
+            
+            print('📋 Creating collections and indexes...');
+            
+            collections.forEach(function(collection, index) {
+              print('  Creating collection: ' + collection + ' (Module: ' + modules[index] + ')');
+              
+              // Create collection if it doesn't exist
+              if (!db.getCollectionNames().includes(collection)) {
+                db.createCollection(collection);
+                print('    ✅ Collection created: ' + collection);
+              } else {
+                print('    ℹ️  Collection already exists: ' + collection);
+              }
+            });
+            
+            // Create indexes for users collection
+            print('🔍 Creating indexes for users collection...');
+            try {
+              db.users.createIndex({email: 1}, {unique: true, name: 'email_unique'});
+              print('    ✅ Index created: email_unique');
+            } catch (error) {
+              if (error.code === 85) print('    ℹ️  Index already exists: email_unique');
+            }
+            
+            try {
+              db.users.createIndex({username: 1}, {unique: true, name: 'username_unique'});
+              print('    ✅ Index created: username_unique');
+            } catch (error) {
+              if (error.code === 85) print('    ℹ️  Index already exists: username_unique');
+            }
+            
+            try {
+              db.users.createIndex({status: 1}, {name: 'status_index'});
+              print('    ✅ Index created: status_index');
+            } catch (error) {
+              if (error.code === 85) print('    ℹ️  Index already exists: status_index');
+            }
+            
+            // Create indexes for wallets collection
+            print('🔍 Creating indexes for wallets collection...');
+            try {
+              db.wallets.createIndex({user_id: 1}, {unique: true, name: 'user_id_unique'});
+              print('    ✅ Index created: user_id_unique');
+            } catch (error) {
+              if (error.code === 85) print('    ℹ️  Index already exists: user_id_unique');
+            }
+            
+            try {
+              db.wallets.createIndex({balance: 1}, {name: 'balance_index'});
+              print('    ✅ Index created: balance_index');
+            } catch (error) {
+              if (error.code === 85) print('    ℹ️  Index already exists: balance_index');
+            }
+            
+            // Create indexes for transactions collection
+            print('🔍 Creating indexes for transactions collection...');
+            try {
+              db.transactions.createIndex({user_id: 1}, {name: 'user_id_index'});
+              print('    ✅ Index created: user_id_index');
+            } catch (error) {
+              if (error.code === 85) print('    ℹ️  Index already exists: user_id_index');
+            }
+            
+            try {
+              db.transactions.createIndex({type: 1}, {name: 'type_index'});
+              print('    ✅ Index created: type_index');
+            } catch (error) {
+              if (error.code === 85) print('    ℹ️  Index already exists: type_index');
+            }
+            
+            try {
+              db.transactions.createIndex({timestamp: 1}, {name: 'timestamp_index'});
+              print('    ✅ Index created: timestamp_index');
+            } catch (error) {
+              if (error.code === 85) print('    ℹ️  Index already exists: timestamp_index');
+            }
+            
+            // Create indexes for purchases collection
+            print('🔍 Creating indexes for purchases collection...');
+            try {
+              db.purchases.createIndex({user_id: 1}, {name: 'user_id_index'});
+              print('    ✅ Index created: user_id_index');
+            } catch (error) {
+              if (error.code === 85) print('    ℹ️  Index already exists: user_id_index');
+            }
+            
+            try {
+              db.purchases.createIndex({provider: 1}, {name: 'provider_index'});
+              print('    ✅ Index created: provider_index');
+            } catch (error) {
+              if (error.code === 85) print('    ℹ️  Index already exists: provider_index');
+            }
+            
+            try {
+              db.purchases.createIndex({status: 1}, {name: 'status_index'});
+              print('    ✅ Index created: status_index');
+            } catch (error) {
+              if (error.code === 85) print('    ℹ️  Index already exists: status_index');
+            }
+            
+            // Create indexes for payment_providers collection
+            print('🔍 Creating indexes for payment_providers collection...');
+            try {
+              db.payment_providers.createIndex({user_id: 1}, {name: 'user_id_index'});
+              print('    ✅ Index created: user_id_index');
+            } catch (error) {
+              if (error.code === 85) print('    ℹ️  Index already exists: user_id_index');
+            }
+            
+            try {
+              db.payment_providers.createIndex({purchase_token: 1}, {unique: true, name: 'purchase_token_unique'});
+              print('    ✅ Index created: purchase_token_unique');
+            } catch (error) {
+              if (error.code === 85) print('    ℹ️  Index already exists: purchase_token_unique');
+            }
+            
+            // Create indexes for audit_logs collection
+            print('🔍 Creating indexes for audit_logs collection...');
+            try {
+              db.audit_logs.createIndex({user_id: 1}, {name: 'user_id_index'});
+              print('    ✅ Index created: user_id_index');
+            } catch (error) {
+              if (error.code === 85) print('    ℹ️  Index already exists: user_id_index');
+            }
+            
+            try {
+              db.audit_logs.createIndex({action: 1}, {name: 'action_index'});
+              print('    ✅ Index created: action_index');
+            } catch (error) {
+              if (error.code === 85) print('    ℹ️  Index already exists: action_index');
+            }
+            
+            try {
+              db.audit_logs.createIndex({timestamp: 1}, {name: 'timestamp_index'});
+              print('    ✅ Index created: timestamp_index');
+            } catch (error) {
+              if (error.code === 85) print('    ℹ️  Index already exists: timestamp_index');
+            }
+            
+            print('✅ All indexes created successfully!');
+          "
+      register: db_setup_result
+      changed_when: true
+
+    - name: Verify database structure
+      shell: |
+        kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_service }} -- \
+          mongosh "mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}" \
+          --eval "
+            print('📋 Database Collections:');
+            db.getCollectionNames().forEach(function(collection) {
+              print('  - ' + collection);
+            });
+            
+            print('\\n📊 Collection Statistics:');
+            db.getCollectionNames().forEach(function(collection) {
+              const count = db[collection].countDocuments();
+              const stats = db[collection].stats();
+              const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
+              print('  ' + collection + ': ' + count + ' documents, ' + sizeMB + ' MB');
+            });
+            
+            print('\\n🔍 Index Information:');
+            db.getCollectionNames().forEach(function(collection) {
+              const indexes = db[collection].getIndexes();
+              print('  ' + collection + ' indexes:');
+              indexes.forEach(function(index) {
+                print('    - ' + index.name + ': ' + JSON.stringify(index.key));
+              });
+            });
+          "
+      register: db_verification
+      changed_when: false
+
+    - name: Display database setup summary
+      debug:
+        msg: |
+          🗄️ Credit System Database Structure Setup Complete!
+          
+          📋 Modular Database Design:
+          - users (User Management Module)
+          - wallets (Wallet Module) 
+          - transactions (Transactions Module)
+          - purchases (Purchases Module)
+          - payment_providers (Payments Module)
+          - audit_logs (Audit/Admin Module)
+          
+          🔗 Connection Details:
+          - Host: {{ mongodb_host }}
+          - Port: {{ mongodb_port }}
+          - Database: {{ database_name }}
+          - User: {{ app_username }}
+          - Auth Source: {{ mongodb_auth_source }}
+          
+          🧪 Test Credentials:
+          - Email: test@example.com
+          - Username: testuser
+          - Password: password123
+          - Balance: 1000 credits
+          
+          📊 Database Verification:
+          {{ db_verification.stdout }}
+          
+          ✅ Database structure is ready for development!
+
+    - name: Display connection string for applications
+      debug:
+        msg: |
+          🔗 MongoDB Connection String for Applications:
+          
+          mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}
+          
+          📝 Environment Variables:
+          MONGODB_URI=mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}
+          MONGODB_DATABASE={{ database_name }}
+          MONGODB_USER={{ app_username }}
+          MONGODB_PASSWORD={{ app_password }} 

@@ -1,0 +1,68 @@
+---
+- name: Add Dummy Data to Credit System Database (Local k3d)
+  hosts: localhost
+  connection: local
+  vars:
+    flask_namespace: "flask-app"
+    mongodb_service: "mongodb"
+    database_name: "credit_system"
+    app_username: "credit_app_user"
+    app_password: "6R3jjsvVhIRP20zMiHdkBzNKx"
+    
+    # MongoDB connection details
+    mongodb_host: "{{ mongodb_service }}.{{ flask_namespace }}.svc.cluster.local"
+    mongodb_port: "27017"
+    mongodb_auth_source: "{{ database_name }}"
+    js_local_path: "/tmp/add_dummy_data.js"
+    js_pod_path: "/tmp/add_dummy_data.js"
+
+  tasks:
+    - name: Verify MongoDB is running
+      shell: |
+        kubectl get pods -n {{ flask_namespace }} -l app.kubernetes.io/name=mongodb --no-headers | grep Running
+      register: mongodb_pod_status
+      changed_when: false
+      failed_when: mongodb_pod_status.rc != 0
+
+    - name: Wait for MongoDB to be ready
+      shell: kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mongodb -n {{ flask_namespace }} --timeout=60s
+      changed_when: false
+
+    - name: Copy dummy data JS file to local /tmp
+      copy:
+        src: /Users/sil/Documents/Work/credit_system/app_dev_new_playbooks/playbooks/00_local/files/add_dummy_data.js
+        dest: "{{ js_local_path }}"
+        mode: '0644'
+
+    - name: Copy dummy data JS file into MongoDB pod
+      shell: |
+        kubectl cp {{ js_local_path }} flask-app/$(kubectl get pod -n flask-app -l app.kubernetes.io/name=mongodb -o jsonpath='{.items[0].metadata.name}'):/tmp/add_dummy_data.js
+      changed_when: true
+
+    - name: Execute dummy data script in MongoDB pod
+      shell: |
+        kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_service }} -- \
+          mongosh "mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}" \
+          --file /tmp/add_dummy_data.js
+      register: dummy_data_result
+      changed_when: true
+
+    - name: Clean up dummy data JS file from pod
+      shell: |
+        kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_service }} -- rm -f /tmp/add_dummy_data.js
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Clean up dummy data JS file from local /tmp
+      file:
+        path: "{{ js_local_path }}"
+        state: absent
+
+    - name: Display dummy data population summary
+      debug:
+        msg: |
+          🧪 Dummy data population complete!
+          Output:
+          {{ dummy_data_result.stdout }}
+          
+          ✅ Database is now populated with test users, wallets, and more! 
