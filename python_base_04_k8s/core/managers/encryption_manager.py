@@ -72,9 +72,21 @@ class EncryptionManager:
         if not self._fernet:
             raise RuntimeError("Encryption manager not initialized")
         
-        # Decrypt data
-        decrypted_data = self._fernet.decrypt(encrypted_data.encode())
-        return decrypted_data.decode()
+        # If the data is not a string, return it as-is (it's not encrypted)
+        if not isinstance(encrypted_data, str):
+            return str(encrypted_data)
+        
+        # If the data doesn't look like encrypted data (not base64), return as-is
+        if not encrypted_data or len(encrypted_data) < 10:
+            return encrypted_data
+        
+        try:
+            # Decrypt data
+            decrypted_data = self._fernet.decrypt(encrypted_data.encode())
+            return decrypted_data.decode()
+        except Exception:
+            # If decryption fails, return the original data
+            return encrypted_data
     
     def encrypt_sensitive_fields(self, data: Dict[str, Any], fields: list) -> Dict[str, Any]:
         """

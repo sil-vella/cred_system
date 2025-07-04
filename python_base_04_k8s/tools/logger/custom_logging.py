@@ -5,6 +5,7 @@ import functools
 import inspect
 import types
 import re
+from logging.handlers import RotatingFileHandler
 # Flags to enable or disable specific logging functionalities
 CUSTOM_LOGGING_ENABLED = True
 GAMEPLAY_LOGGING_ENABLED = False
@@ -39,7 +40,8 @@ custom_log_file_name = 'server.log'
 custom_log_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), custom_log_file_name)
 custom_logger = logging.getLogger('custom_log')
 custom_logger.setLevel(logging.DEBUG)
-custom_handler = logging.FileHandler(custom_log_file_path, 'w')
+# Use RotatingFileHandler for log rotation (max 10MB, keep 5 backup files)
+custom_handler = RotatingFileHandler(custom_log_file_path, maxBytes=10*1024*1024, backupCount=5, mode='a')
 custom_handler.setFormatter(CustomFormatter())
 custom_logger.addHandler(custom_handler)
 

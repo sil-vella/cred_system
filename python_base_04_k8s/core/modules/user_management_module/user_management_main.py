@@ -62,7 +62,7 @@ class UserManagementModule(BaseModule):
             custom_log("⚠️ User operations will be limited - suitable for local development")
 
     def create_user(self):
-        """Create a new user directly in database."""
+        """Create a new user with queued database operation."""
         try:
             data = request.get_json()
             email = data.get('email')
@@ -73,7 +73,7 @@ class UserManagementModule(BaseModule):
                 return jsonify({'error': 'email, username, and password are required'}), 400
             
             # Check if user already exists
-            existing_user = self.db_manager.find_one("users", {"email": email})
+            existing_user = self.analytics_db.find_one("users", {"email": email})
             if existing_user:
                 return jsonify({'error': 'User with this email already exists'}), 409
             
@@ -90,28 +90,28 @@ class UserManagementModule(BaseModule):
                 'status': 'active'
             }
             
-            # Insert user directly into database
-            result = self.db_manager.insert_one("users", user_data)
+            # Insert user using queue system
+            user_id = self.db_manager.insert("users", user_data)
             
-            if result:
+            if user_id:
                 # Remove password from response
                 user_data.pop('password', None)
-                user_data['_id'] = str(result.inserted_id)
+                user_data['_id'] = user_id
                 
                 return jsonify({
                     'message': 'User created successfully',
                     'user': user_data,
                     'status': 'created'
                 }), 201
-            
-            return jsonify({'error': 'Failed to create user'}), 500
+            else:
+                return jsonify({'error': 'Failed to create user'}), 500
             
         except Exception as e:
             custom_log(f"Error creating user: {e}")
             return jsonify({'error': 'Failed to create user'}), 500
 
     def get_user(self, user_id):
-        """Get user by ID."""
+        """Get user by ID with queued operation."""
         try:
             user = self.analytics_db.find_one("users", {"_id": user_id})
             if not user:
@@ -126,7 +126,7 @@ class UserManagementModule(BaseModule):
             return jsonify({'error': 'Failed to get user'}), 500
 
     def update_user(self, user_id):
-        """Update user information directly in database."""
+        """Update user information with queued operation."""
         try:
             data = request.get_json()
             update_data = {'updated_at': datetime.utcnow().isoformat()}
@@ -137,10 +137,10 @@ class UserManagementModule(BaseModule):
                 if field in data:
                     update_data[field] = data[field]
             
-            # Update user directly in database
-            result = self.db_manager.update_one("users", {"_id": user_id}, {"$set": update_data})
+            # Update user using queue system
+            modified_count = self.db_manager.update("users", {"_id": user_id}, {"$set": update_data})
             
-            if result and result.modified_count > 0:
+            if modified_count > 0:
                 return jsonify({
                     'message': 'User updated successfully',
                     'user_id': user_id,
@@ -154,12 +154,12 @@ class UserManagementModule(BaseModule):
             return jsonify({'error': 'Failed to update user'}), 500
 
     def delete_user(self, user_id):
-        """Delete a user directly from database."""
+        """Delete a user with queued operation."""
         try:
-            # Delete user directly from database
-            result = self.db_manager.delete_one("users", {"_id": user_id})
+            # Delete user using queue system
+            deleted_count = self.db_manager.delete("users", {"_id": user_id})
             
-            if result and result.deleted_count > 0:
+            if deleted_count > 0:
                 return jsonify({
                     'message': 'User deleted successfully',
                     'user_id': user_id,
@@ -173,7 +173,7 @@ class UserManagementModule(BaseModule):
             return jsonify({'error': 'Failed to delete user'}), 500
 
     def search_users(self):
-        """Search users with filters."""
+        """Search users with filters using queued operation."""
         try:
             data = request.get_json()
             query = {}
@@ -185,6 +185,7 @@ class UserManagementModule(BaseModule):
             if 'status' in data:
                 query['status'] = data['status']
             
+            # Search users using queue system
             users = self.analytics_db.find("users", query)
             
             # Remove passwords from response
@@ -201,4 +202,19 @@ class UserManagementModule(BaseModule):
         """Perform health check for UserManagementModule."""
         health_status = super().health_check()
         health_status['dependencies'] = self.dependencies
+        
+        # Add database queue status
+        try:
+            queue_status = self.db_manager.get_queue_status()
+            health_status['details'] = {
+                'database_queue': {
+                    'queue_size': queue_status['queue_size'],
+                    'worker_alive': queue_status['worker_alive'],
+                    'queue_enabled': queue_status['queue_enabled'],
+                    'pending_results': queue_status['pending_results']
+                }
+            }
+        except Exception as e:
+            health_status['details'] = {'database_queue': f'error: {str(e)}'}
+        
         return health_status 

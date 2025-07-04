@@ -120,21 +120,10 @@ class RedisManager:
     def _encrypt_data(self, data):
         """Encrypt data before storing in Redis."""
         try:
-            # Handle direct set values
-            if isinstance(data, set):
-                data = list(data)
-            
-            # Convert any sets to lists for JSON serialization
-            if isinstance(data, dict):
-                data = self._convert_sets_to_lists(data)
-            elif isinstance(data, list):
-                data = [self._convert_sets_to_lists(item) if isinstance(item, dict) else 
-                       (list(item) if isinstance(item, set) else item) for item in data]
-            
-            # Convert to JSON string
             if isinstance(data, (dict, list)):
                 data = json.dumps(data)
-            
+            elif not isinstance(data, str):
+                data = str(data)
             # Encrypt the data
             return self.cipher_suite.encrypt(data.encode()).decode()
         except Exception as e:
@@ -256,7 +245,28 @@ class RedisManager:
         """Increment value in Redis with secure key generation."""
         try:
             secure_key = self._generate_secure_key(key, *args)
-            return self.redis.incr(secure_key)
+            # Check if key exists first
+            if not self.redis.exists(secure_key):
+                # If key doesn't exist, set it to 1
+                self.redis.set(secure_key, 1)
+                return 1
+            else:
+                # Check if the existing value is an integer
+                current_value = self.redis.get(secure_key)
+                if current_value is None:
+                    # Key was deleted between exists and get, set to 1
+                    self.redis.set(secure_key, 1)
+                    return 1
+                try:
+                    # Try to convert to int to verify it's a valid integer
+                    int(current_value)
+                    # If successful, increment it
+                    return self.redis.incr(secure_key)
+                except (ValueError, TypeError):
+                    # If the value is not an integer, reset it to 1
+                    custom_log(f"⚠️ Redis key {secure_key} has non-integer value '{current_value}', resetting to 1")
+                    self.redis.set(secure_key, 1)
+                    return 1
         except Exception as e:
             custom_log(f"❌ Error incrementing value in Redis: {e}")
             return None
@@ -459,9 +469,14 @@ class RedisManager:
                             custom_log(f"Room {room_id} has reached size limit of {room_size_limit}")
                             return False
                             
-                        # Increment size
+                        # Increment size - ensure key exists first
                         pipe.multi()
-                        pipe.incr(key)
+                        if current_size == 0:
+                            # If key doesn't exist, set it to 1 first
+                            pipe.set(key, 1)
+                        else:
+                            # If key exists, increment it
+                            pipe.incr(key)
                         pipe.expire(key, 3600)  # 1 hour expiry
                         
                         # Execute transaction

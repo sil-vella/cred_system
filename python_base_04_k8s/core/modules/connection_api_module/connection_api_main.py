@@ -115,7 +115,7 @@ class ConnectionAPI(BaseModule):
             return None
 
     def create_user(self, username, email, hashed_password):
-        """Create a new user with proper error handling."""
+        """Create a new user with queued database operation."""
         try:
             user_data = {
                 "username": username,
@@ -124,16 +124,23 @@ class ConnectionAPI(BaseModule):
                 "created_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow()
             }
+            
+            # Insert user using queue system
             user_id = self.db_manager.insert("users", user_data)
-            return self.get_user_by_email(email)
+            
+            if user_id:
+                return self.get_user_by_email(email)
+            else:
+                raise Exception("Failed to create user")
+                
         except Exception as e:
             self.logger.error(f"Error creating user: {e}")
             raise
 
     def delete_user(self, user_id):
-        """Delete a user and all associated data with proper error handling."""
+        """Delete a user and all associated data with queued operations."""
         try:
-            # Delete user data from all collections
+            # Delete user data from all collections using queue system
             self.db_manager.delete("users", {"_id": user_id})
             self.db_manager.delete("user_sessions", {"user_id": user_id})
             self.db_manager.delete("user_tokens", {"user_id": user_id})
@@ -146,7 +153,7 @@ class ConnectionAPI(BaseModule):
             raise
 
     def fetch_from_db(self, collection, query, as_dict=False):
-        """Execute a query and cache results in Redis."""
+        """Execute a query with queued operation and cache results in Redis."""
         try:
             # Validate query
             if not query or not isinstance(query, dict):
@@ -164,36 +171,36 @@ class ConnectionAPI(BaseModule):
             except Exception as e:
                 self.logger.warning(f"Cache retrieval failed: {e}")
             
-            # Execute query
-            result = self.analytics_db.find(collection, query)
+            # Execute query using queue system
+            query_result = self.analytics_db.find(collection, query)
             
             # Cache the result
             try:
-                self.redis_manager.set(cache_key, result, expire=300)  # Cache for 5 minutes
+                self.redis_manager.set(cache_key, query_result, expire=300)  # Cache for 5 minutes
                 custom_log(f"✅ Cached query result in Redis")
             except Exception as e:
                 self.logger.warning(f"Cache storage failed: {e}")
             
-            return result
+            return query_result
             
         except Exception as e:
             self.logger.error(f"Error executing query: {e}")
             raise
 
     def execute_query(self, collection, query, data=None):
-        """Execute a write operation and invalidate relevant caches."""
+        """Execute a write operation with queued operation and invalidate relevant caches."""
         try:
             if data:
-                # Update operation
-                result = self.db_manager.update(collection, query, data)
+                # Update operation using queue system
+                modified_count = self.db_manager.update(collection, query, data)
             else:
-                # Delete operation
-                result = self.db_manager.delete(collection, query)
+                # Delete operation using queue system
+                modified_count = self.db_manager.delete(collection, query)
             
             # Invalidate relevant caches
             self._invalidate_caches(collection)
             
-            return result
+            return modified_count
             
         except Exception as e:
             self.logger.error(f"Error executing query: {e}")
@@ -221,7 +228,7 @@ class ConnectionAPI(BaseModule):
             raise
 
     def _create_session(self, user_id: int, username: str, email: str) -> dict:
-        """Create a new session for a user."""
+        """Create a new session for a user with queued operation."""
         try:
             session_data = {
                 'user_id': user_id,
@@ -232,8 +239,11 @@ class ConnectionAPI(BaseModule):
                 'session_id': str(uuid.uuid4())
             }
             
-            # Store session in database
-            self.db_manager.insert("user_sessions", session_data)
+            # Insert session using queue system
+            session_id = self.db_manager.insert("user_sessions", session_data)
+            
+            if not session_id:
+                raise Exception("Failed to create session")
             
             # Cache session in Redis
             self.redis_manager.set(
@@ -248,10 +258,13 @@ class ConnectionAPI(BaseModule):
             raise
 
     def _remove_session(self, session_id: str, user_id: int) -> bool:
-        """Remove a session for a user."""
+        """Remove a session for a user with queued operation."""
         try:
-            # Remove from database
-            self.db_manager.delete("user_sessions", {"session_id": session_id, "user_id": user_id})
+            # Delete session using queue system
+            deleted_count = self.db_manager.delete("user_sessions", {"session_id": session_id, "user_id": user_id})
+            
+            if deleted_count == 0:
+                self.logger.warning(f"Failed to remove session: No session found")
             
             # Remove from Redis cache
             self.redis_manager.delete(f"session:{session_id}")
@@ -262,8 +275,9 @@ class ConnectionAPI(BaseModule):
             return False
 
     def check_active_sessions(self, user_id: int) -> bool:
-        """Check if user has active sessions."""
+        """Check if user has active sessions with queued operation."""
         try:
+            # Find sessions using queue system
             sessions = self.analytics_db.find("user_sessions", {"user_id": user_id})
             return len(sessions) > 0
         except Exception as e:
@@ -430,6 +444,18 @@ class ConnectionAPI(BaseModule):
             
             # Check JWT manager
             health_status['details']['jwt_manager'] = 'healthy'
+            
+            # Check database queue status
+            try:
+                queue_status = self.db_manager.get_queue_status()
+                health_status['details']['database_queue'] = {
+                    'queue_size': queue_status['queue_size'],
+                    'worker_alive': queue_status['worker_alive'],
+                    'queue_enabled': queue_status['queue_enabled'],
+                    'pending_results': queue_status['pending_results']
+                }
+            except Exception as e:
+                health_status['details']['database_queue'] = f'error: {str(e)}'
             
             # Overall status - app can run with limited functionality if only database is unavailable
             if not redis_healthy:
