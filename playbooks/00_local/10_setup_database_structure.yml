@@ -1,289 +1,663 @@
 ---
-- name: Setup Database Structure for Credit System (Local k3d)
+- name: Setup MongoDB Database Structure and Dummy Data (Local k3d)
   hosts: localhost
   connection: local
   vars:
     flask_namespace: "flask-app"
-    mongodb_service: "mongodb"
+    mongodb_release_name: "mongodb"
     database_name: "credit_system"
-    app_username: "credit_app_user"
+    app_user: "credit_app_user"
     app_password: "6R3jjsvVhIRP20zMiHdkBzNKx"
     
-    # Root user credentials (created by Helm)
-    root_username: "mongodb_admin"
-    root_password: "MongoAdmin123!@#SecurePass"
-    
     # MongoDB connection details
-    mongodb_host: "{{ mongodb_service }}.{{ flask_namespace }}.svc.cluster.local"
+    mongodb_host: "{{ mongodb_release_name }}.{{ flask_namespace }}.svc.cluster.local"
     mongodb_port: "27017"
-    mongodb_auth_source: "{{ database_name }}"
-    
-    # Collections to create
-    collections:
-      - name: "users"
-        module: "User Management"
-        indexes:
-          - key: {"email": 1}
-            unique: true
-            name: "email_unique"
-          - key: {"username": 1}
-            unique: true
-            name: "username_unique"
-          - key: {"status": 1}
-            name: "status_index"
-          - key: {"created_at": 1}
-            name: "created_at_index"
-      
-      - name: "wallets"
-        module: "Wallet"
-        indexes:
-          - key: {"user_id": 1}
-            unique: true
-            name: "user_id_unique"
-          - key: {"balance": 1}
-            name: "balance_index"
-          - key: {"updated_at": 1}
-            name: "updated_at_index"
-      
-      - name: "transactions"
-        module: "Transactions"
-        indexes:
-          - key: {"user_id": 1}
-            name: "user_id_index"
-          - key: {"type": 1}
-            name: "type_index"
-          - key: {"timestamp": 1}
-            name: "timestamp_index"
-          - key: {"user_id": 1, "timestamp": -1}
-            name: "user_timestamp_index"
-          - key: {"ref_id": 1}
-            name: "ref_id_index"
-      
-      - name: "purchases"
-        module: "Purchases"
-        indexes:
-          - key: {"user_id": 1}
-            name: "user_id_index"
-          - key: {"provider": 1}
-            name: "provider_index"
-          - key: {"status": 1}
-            name: "status_index"
-          - key: {"created_at": 1}
-            name: "created_at_index"
-          - key: {"user_id": 1, "created_at": -1}
-            name: "user_created_index"
-      
-      - name: "payment_providers"
-        module: "Payments"
-        indexes:
-          - key: {"user_id": 1}
-            name: "user_id_index"
-          - key: {"provider": 1}
-            name: "provider_index"
-          - key: {"purchase_token": 1}
-            unique: true
-            name: "purchase_token_unique"
-          - key: {"linked_purchase_id": 1}
-            name: "linked_purchase_index"
-          - key: {"status": 1}
-            name: "status_index"
-          - key: {"validated_at": 1}
-            name: "validated_at_index"
-      
-      - name: "audit_logs"
-        module: "Audit/Admin"
-        indexes:
-          - key: {"user_id": 1}
-            name: "user_id_index"
-          - key: {"action": 1}
-            name: "action_index"
-          - key: {"admin_id": 1}
-            name: "admin_id_index"
-          - key: {"timestamp": 1}
-            name: "timestamp_index"
-          - key: {"user_id": 1, "timestamp": -1}
-            name: "user_timestamp_index"
+    mongodb_auth_db: "credit_system"
 
   tasks:
-    - name: Verify MongoDB is running
-      shell: |
-        kubectl get pods -n {{ flask_namespace }} -l app.kubernetes.io/name=mongodb --no-headers | grep Running
-      register: mongodb_pod_status
-      changed_when: false
-      failed_when: mongodb_pod_status.rc != 0
-
     - name: Wait for MongoDB to be ready
-      shell: kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mongodb -n {{ flask_namespace }} --timeout=60s
-      changed_when: false
+      shell: kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mongodb -n {{ flask_namespace }} --timeout=300s
+      register: mongodb_ready
+      changed_when: mongodb_ready.rc == 0
 
-    - name: Drop and recreate database completely
+    - name: Create database structure setup script
+      copy:
+        dest: "/tmp/setup_database.js"
+        content: |
+          // MongoDB Database Structure Setup Script
+          // Credit System Database with Modular Collections
+          
+          // Switch to the credit_system database
+          db = db.getSiblingDB('credit_system');
+          
+          print("🗄️ Setting up Credit System Database Structure...");
+          
+          // ========================================
+          // 1. USERS COLLECTION (User Module)
+          // ========================================
+          print("📝 Creating users collection...");
+          
+          // Create users collection with indexes
+          db.createCollection("users");
+          db.users.createIndex({ "email": 1 }, { unique: true });
+          db.users.createIndex({ "username": 1 });
+          db.users.createIndex({ "status": 1 });
+          db.users.createIndex({ "created_at": 1 });
+          
+          // Insert dummy users
+          db.users.insertMany([
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439011"),
+              "email": "john.doe@example.com",
+              "username": "johndoe",
+              "password": "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj4J/HS.i8e", // "password123"
+              "status": "active",
+              "created_at": new Date("2024-01-15T10:30:00Z"),
+              "updated_at": new Date("2024-01-15T10:30:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439012"),
+              "email": "jane.smith@example.com",
+              "username": "janesmith",
+              "password": "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj4J/HS.i8e", // "password123"
+              "status": "active",
+              "created_at": new Date("2024-01-20T14:45:00Z"),
+              "updated_at": new Date("2024-01-20T14:45:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439013"),
+              "email": "bob.wilson@example.com",
+              "username": "bobwilson",
+              "password": "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj4J/HS.i8e", // "password123"
+              "status": "active",
+              "created_at": new Date("2024-02-01T09:15:00Z"),
+              "updated_at": new Date("2024-02-01T09:15:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439014"),
+              "email": "alice.johnson@example.com",
+              "username": "alicejohnson",
+              "password": "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj4J/HS.i8e", // "password123"
+              "status": "active",
+              "created_at": new Date("2024-02-10T16:20:00Z"),
+              "updated_at": new Date("2024-02-10T16:20:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439015"),
+              "email": "mike.brown@example.com",
+              "username": "mikebrown",
+              "password": "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj4J/HS.i8e", // "password123"
+              "status": "active",
+              "created_at": new Date("2024-02-15T11:30:00Z"),
+              "updated_at": new Date("2024-02-15T11:30:00Z")
+            }
+          ]);
+          
+          print("✅ Users collection created with " + db.users.countDocuments() + " users");
+          
+          // ========================================
+          // 2. WALLETS COLLECTION (Wallet Module)
+          // ========================================
+          print("💳 Creating wallets collection...");
+          
+          db.createCollection("wallets");
+          db.wallets.createIndex({ "user_id": 1 }, { unique: true });
+          db.wallets.createIndex({ "balance": 1 });
+          db.wallets.createIndex({ "updated_at": 1 });
+          
+          // Insert dummy wallets
+          db.wallets.insertMany([
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439021"),
+              "user_id": ObjectId("507f1f77bcf86cd799439011"),
+              "balance": 1500,
+              "currency": "credits",
+              "created_at": new Date("2024-01-15T10:30:00Z"),
+              "updated_at": new Date("2024-03-01T12:00:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439022"),
+              "user_id": ObjectId("507f1f77bcf86cd799439012"),
+              "balance": 750,
+              "currency": "credits",
+              "created_at": new Date("2024-01-20T14:45:00Z"),
+              "updated_at": new Date("2024-03-01T12:00:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439023"),
+              "user_id": ObjectId("507f1f77bcf86cd799439013"),
+              "balance": 2200,
+              "currency": "credits",
+              "created_at": new Date("2024-02-01T09:15:00Z"),
+              "updated_at": new Date("2024-03-01T12:00:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439024"),
+              "user_id": ObjectId("507f1f77bcf86cd799439014"),
+              "balance": 500,
+              "currency": "credits",
+              "created_at": new Date("2024-02-10T16:20:00Z"),
+              "updated_at": new Date("2024-03-01T12:00:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439025"),
+              "user_id": ObjectId("507f1f77bcf86cd799439015"),
+              "balance": 3200,
+              "currency": "credits",
+              "created_at": new Date("2024-02-15T11:30:00Z"),
+              "updated_at": new Date("2024-03-01T12:00:00Z")
+            }
+          ]);
+          
+          print("✅ Wallets collection created with " + db.wallets.countDocuments() + " wallets");
+          
+          // ========================================
+          // 3. TRANSACTIONS COLLECTION (Transactions Module)
+          // ========================================
+          print("📒 Creating transactions collection...");
+          
+          db.createCollection("transactions");
+          db.transactions.createIndex({ "user_id": 1 });
+          db.transactions.createIndex({ "type": 1 });
+          db.transactions.createIndex({ "timestamp": 1 });
+          db.transactions.createIndex({ "source": 1 });
+          db.transactions.createIndex({ "ref_id": 1 });
+          
+          // Insert dummy transactions
+          db.transactions.insertMany([
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439031"),
+              "user_id": ObjectId("507f1f77bcf86cd799439011"),
+              "type": "credit",
+              "source": "purchase",
+              "ref_id": ObjectId("507f1f77bcf86cd799439041"),
+              "amount": 1000,
+              "timestamp": new Date("2024-01-15T10:30:00Z"),
+              "description": "Initial credit purchase"
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439032"),
+              "user_id": ObjectId("507f1f77bcf86cd799439011"),
+              "type": "debit",
+              "source": "usage",
+              "amount": 200,
+              "timestamp": new Date("2024-01-20T15:45:00Z"),
+              "description": "Service usage"
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439033"),
+              "user_id": ObjectId("507f1f77bcf86cd799439011"),
+              "type": "credit",
+              "source": "purchase",
+              "ref_id": ObjectId("507f1f77bcf86cd799439042"),
+              "amount": 700,
+              "timestamp": new Date("2024-02-01T09:15:00Z"),
+              "description": "Additional credits"
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439034"),
+              "user_id": ObjectId("507f1f77bcf86cd799439012"),
+              "type": "credit",
+              "source": "purchase",
+              "ref_id": ObjectId("507f1f77bcf86cd799439043"),
+              "amount": 500,
+              "timestamp": new Date("2024-01-20T14:45:00Z"),
+              "description": "Initial purchase"
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439035"),
+              "user_id": ObjectId("507f1f77bcf86cd799439012"),
+              "type": "credit",
+              "source": "purchase",
+              "ref_id": ObjectId("507f1f77bcf86cd799439044"),
+              "amount": 250,
+              "timestamp": new Date("2024-02-15T11:30:00Z"),
+              "description": "Top-up purchase"
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439036"),
+              "user_id": ObjectId("507f1f77bcf86cd799439013"),
+              "type": "credit",
+              "source": "purchase",
+              "ref_id": ObjectId("507f1f77bcf86cd799439045"),
+              "amount": 2000,
+              "timestamp": new Date("2024-02-01T09:15:00Z"),
+              "description": "Large credit purchase"
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439037"),
+              "user_id": ObjectId("507f1f77bcf86cd799439013"),
+              "type": "credit",
+              "source": "purchase",
+              "ref_id": ObjectId("507f1f77bcf86cd799439046"),
+              "amount": 200,
+              "timestamp": new Date("2024-02-20T16:00:00Z"),
+              "description": "Small top-up"
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439038"),
+              "user_id": ObjectId("507f1f77bcf86cd799439014"),
+              "type": "credit",
+              "source": "purchase",
+              "ref_id": ObjectId("507f1f77bcf86cd799439047"),
+              "amount": 500,
+              "timestamp": new Date("2024-02-10T16:20:00Z"),
+              "description": "Initial purchase"
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439039"),
+              "user_id": ObjectId("507f1f77bcf86cd799439015"),
+              "type": "credit",
+              "source": "purchase",
+              "ref_id": ObjectId("507f1f77bcf86cd799439048"),
+              "amount": 3000,
+              "timestamp": new Date("2024-02-15T11:30:00Z"),
+              "description": "Premium package"
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd79943903a"),
+              "user_id": ObjectId("507f1f77bcf86cd799439015"),
+              "type": "credit",
+              "source": "purchase",
+              "ref_id": ObjectId("507f1f77bcf86cd799439049"),
+              "amount": 200,
+              "timestamp": new Date("2024-02-25T13:45:00Z"),
+              "description": "Additional credits"
+            }
+          ]);
+          
+          print("✅ Transactions collection created with " + db.transactions.countDocuments() + " transactions");
+          
+          // ========================================
+          // 4. PURCHASES COLLECTION (Purchasing Module)
+          // ========================================
+          print("🛍️ Creating purchases collection...");
+          
+          db.createCollection("purchases");
+          db.purchases.createIndex({ "user_id": 1 });
+          db.purchases.createIndex({ "provider": 1 });
+          db.purchases.createIndex({ "status": 1 });
+          db.purchases.createIndex({ "created_at": 1 });
+          db.purchases.createIndex({ "transaction_id": 1 }, { unique: true });
+          
+          // Insert dummy purchases
+          db.purchases.insertMany([
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439041"),
+              "user_id": ObjectId("507f1f77bcf86cd799439011"),
+              "provider": "stripe",
+              "amount_usd": 9.99,
+              "status": "completed",
+              "credits_awarded": 1000,
+              "transaction_id": "txn_001",
+              "created_at": new Date("2024-01-15T10:30:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439042"),
+              "user_id": ObjectId("507f1f77bcf86cd799439011"),
+              "provider": "stripe",
+              "amount_usd": 6.99,
+              "status": "completed",
+              "credits_awarded": 700,
+              "transaction_id": "txn_002",
+              "created_at": new Date("2024-02-01T09:15:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439043"),
+              "user_id": ObjectId("507f1f77bcf86cd799439012"),
+              "provider": "google",
+              "amount_usd": 4.99,
+              "status": "completed",
+              "credits_awarded": 500,
+              "transaction_id": "txn_003",
+              "created_at": new Date("2024-01-20T14:45:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439044"),
+              "user_id": ObjectId("507f1f77bcf86cd799439012"),
+              "provider": "apple",
+              "amount_usd": 2.99,
+              "status": "completed",
+              "credits_awarded": 250,
+              "transaction_id": "txn_004",
+              "created_at": new Date("2024-02-15T11:30:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439045"),
+              "user_id": ObjectId("507f1f77bcf86cd799439013"),
+              "provider": "stripe",
+              "amount_usd": 19.99,
+              "status": "completed",
+              "credits_awarded": 2000,
+              "transaction_id": "txn_005",
+              "created_at": new Date("2024-02-01T09:15:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439046"),
+              "user_id": ObjectId("507f1f77bcf86cd799439013"),
+              "provider": "google",
+              "amount_usd": 1.99,
+              "status": "completed",
+              "credits_awarded": 200,
+              "transaction_id": "txn_006",
+              "created_at": new Date("2024-02-20T16:00:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439047"),
+              "user_id": ObjectId("507f1f77bcf86cd799439014"),
+              "provider": "apple",
+              "amount_usd": 4.99,
+              "status": "completed",
+              "credits_awarded": 500,
+              "transaction_id": "txn_007",
+              "created_at": new Date("2024-02-10T16:20:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439048"),
+              "user_id": ObjectId("507f1f77bcf86cd799439015"),
+              "provider": "stripe",
+              "amount_usd": 29.99,
+              "status": "completed",
+              "credits_awarded": 3000,
+              "transaction_id": "txn_008",
+              "created_at": new Date("2024-02-15T11:30:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439049"),
+              "user_id": ObjectId("507f1f77bcf86cd799439015"),
+              "provider": "google",
+              "amount_usd": 1.99,
+              "status": "completed",
+              "credits_awarded": 200,
+              "transaction_id": "txn_009",
+              "created_at": new Date("2024-02-25T13:45:00Z")
+            }
+          ]);
+          
+          print("✅ Purchases collection created with " + db.purchases.countDocuments() + " purchases");
+          
+          // ========================================
+          // 5. PAYMENT_PROVIDERS COLLECTION (Payment Module)
+          // ========================================
+          print("💳 Creating payment_providers collection...");
+          
+          db.createCollection("payment_providers");
+          db.payment_providers.createIndex({ "provider": 1 });
+          db.payment_providers.createIndex({ "user_id": 1 });
+          db.payment_providers.createIndex({ "status": 1 });
+          db.payment_providers.createIndex({ "validated_at": 1 });
+          db.payment_providers.createIndex({ "linked_purchase_id": 1 });
+          
+          // Insert dummy payment provider records
+          db.payment_providers.insertMany([
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439051"),
+              "provider": "stripe",
+              "user_id": ObjectId("507f1f77bcf86cd799439011"),
+              "purchase_token": "pi_3OqK8v2eZvKYlo2C1gFJqXqE",
+              "linked_purchase_id": ObjectId("507f1f77bcf86cd799439041"),
+              "status": "validated",
+              "raw_response": {
+                "id": "pi_3OqK8v2eZvKYlo2C1gFJqXqE",
+                "amount": 999,
+                "currency": "usd",
+                "status": "succeeded"
+              },
+              "validated_at": new Date("2024-01-15T10:30:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439052"),
+              "provider": "stripe",
+              "user_id": ObjectId("507f1f77bcf86cd799439011"),
+              "purchase_token": "pi_3OqK8v2eZvKYlo2C1gFJqXqF",
+              "linked_purchase_id": ObjectId("507f1f77bcf86cd799439042"),
+              "status": "validated",
+              "raw_response": {
+                "id": "pi_3OqK8v2eZvKYlo2C1gFJqXqF",
+                "amount": 699,
+                "currency": "usd",
+                "status": "succeeded"
+              },
+              "validated_at": new Date("2024-02-01T09:15:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439053"),
+              "provider": "google",
+              "user_id": ObjectId("507f1f77bcf86cd799439012"),
+              "purchase_token": "google_purchase_token_001",
+              "linked_purchase_id": ObjectId("507f1f77bcf86cd799439043"),
+              "status": "validated",
+              "raw_response": {
+                "purchaseToken": "google_purchase_token_001",
+                "orderId": "order_001",
+                "purchaseState": 0
+              },
+              "validated_at": new Date("2024-01-20T14:45:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439054"),
+              "provider": "apple",
+              "user_id": ObjectId("507f1f77bcf86cd799439012"),
+              "purchase_token": "apple_purchase_token_001",
+              "linked_purchase_id": ObjectId("507f1f77bcf86cd799439044"),
+              "status": "validated",
+              "raw_response": {
+                "transaction_id": "1000000000000001",
+                "product_id": "com.example.credits",
+                "purchase_date_ms": "1708000000000"
+              },
+              "validated_at": new Date("2024-02-15T11:30:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439055"),
+              "provider": "stripe",
+              "user_id": ObjectId("507f1f77bcf86cd799439013"),
+              "purchase_token": "pi_3OqK8v2eZvKYlo2C1gFJqXqG",
+              "linked_purchase_id": ObjectId("507f1f77bcf86cd799439045"),
+              "status": "validated",
+              "raw_response": {
+                "id": "pi_3OqK8v2eZvKYlo2C1gFJqXqG",
+                "amount": 1999,
+                "currency": "usd",
+                "status": "succeeded"
+              },
+              "validated_at": new Date("2024-02-01T09:15:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439056"),
+              "provider": "google",
+              "user_id": ObjectId("507f1f77bcf86cd799439013"),
+              "purchase_token": "google_purchase_token_002",
+              "linked_purchase_id": ObjectId("507f1f77bcf86cd799439046"),
+              "status": "validated",
+              "raw_response": {
+                "purchaseToken": "google_purchase_token_002",
+                "orderId": "order_002",
+                "purchaseState": 0
+              },
+              "validated_at": new Date("2024-02-20T16:00:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439057"),
+              "provider": "apple",
+              "user_id": ObjectId("507f1f77bcf86cd799439014"),
+              "purchase_token": "apple_purchase_token_002",
+              "linked_purchase_id": ObjectId("507f1f77bcf86cd799439047"),
+              "status": "validated",
+              "raw_response": {
+                "transaction_id": "1000000000000002",
+                "product_id": "com.example.credits",
+                "purchase_date_ms": "1708000000000"
+              },
+              "validated_at": new Date("2024-02-10T16:20:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439058"),
+              "provider": "stripe",
+              "user_id": ObjectId("507f1f77bcf86cd799439015"),
+              "purchase_token": "pi_3OqK8v2eZvKYlo2C1gFJqXqH",
+              "linked_purchase_id": ObjectId("507f1f77bcf86cd799439048"),
+              "status": "validated",
+              "raw_response": {
+                "id": "pi_3OqK8v2eZvKYlo2C1gFJqXqH",
+                "amount": 2999,
+                "currency": "usd",
+                "status": "succeeded"
+              },
+              "validated_at": new Date("2024-02-15T11:30:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439059"),
+              "provider": "google",
+              "user_id": ObjectId("507f1f77bcf86cd799439015"),
+              "purchase_token": "google_purchase_token_003",
+              "linked_purchase_id": ObjectId("507f1f77bcf86cd799439049"),
+              "status": "validated",
+              "raw_response": {
+                "purchaseToken": "google_purchase_token_003",
+                "orderId": "order_003",
+                "purchaseState": 0
+              },
+              "validated_at": new Date("2024-02-25T13:45:00Z")
+            }
+          ]);
+          
+          print("✅ Payment providers collection created with " + db.payment_providers.countDocuments() + " records");
+          
+          // ========================================
+          // 6. AUDIT_LOGS COLLECTION (Admin Module)
+          // ========================================
+          print("📢 Creating audit_logs collection...");
+          
+          db.createCollection("audit_logs");
+          db.audit_logs.createIndex({ "user_id": 1 });
+          db.audit_logs.createIndex({ "action": 1 });
+          db.audit_logs.createIndex({ "admin_id": 1 });
+          db.audit_logs.createIndex({ "timestamp": 1 });
+          
+          // Insert dummy audit logs
+          db.audit_logs.insertMany([
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439061"),
+              "user_id": ObjectId("507f1f77bcf86cd799439011"),
+              "action": "admin_credit",
+              "admin_id": ObjectId("507f1f77bcf86cd799439001"),
+              "change": { "amount": 100, "reason": "Customer service adjustment" },
+              "timestamp": new Date("2024-01-25T10:00:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439062"),
+              "user_id": ObjectId("507f1f77bcf86cd799439012"),
+              "action": "admin_debit",
+              "admin_id": ObjectId("507f1f77bcf86cd799439001"),
+              "change": { "amount": 50, "reason": "Fraudulent activity reversal" },
+              "timestamp": new Date("2024-02-05T14:30:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439063"),
+              "user_id": ObjectId("507f1f77bcf86cd799439013"),
+              "action": "admin_credit",
+              "admin_id": ObjectId("507f1f77bcf86cd799439002"),
+              "change": { "amount": 200, "reason": "Compensation for service outage" },
+              "timestamp": new Date("2024-02-10T09:15:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439064"),
+              "user_id": ObjectId("507f1f77bcf86cd799439014"),
+              "action": "admin_credit",
+              "admin_id": ObjectId("507f1f77bcf86cd799439001"),
+              "change": { "amount": 75, "reason": "Referral bonus" },
+              "timestamp": new Date("2024-02-12T16:45:00Z")
+            },
+            {
+              "_id": ObjectId("507f1f77bcf86cd799439065"),
+              "user_id": ObjectId("507f1f77bcf86cd799439015"),
+              "action": "admin_debit",
+              "admin_id": ObjectId("507f1f77bcf86cd799439002"),
+              "change": { "amount": 150, "reason": "Chargeback processing" },
+              "timestamp": new Date("2024-02-28T11:20:00Z")
+            }
+          ]);
+          
+          print("✅ Audit logs collection created with " + db.audit_logs.countDocuments() + " records");
+          
+          // ========================================
+          // FINAL SUMMARY
+          // ========================================
+          print("\n🎉 DATABASE STRUCTURE SETUP COMPLETE!");
+          print("=====================================");
+          print("Collections created:");
+          print("- users: " + db.users.countDocuments() + " documents");
+          print("- wallets: " + db.wallets.countDocuments() + " documents");
+          print("- transactions: " + db.transactions.countDocuments() + " documents");
+          print("- purchases: " + db.purchases.countDocuments() + " documents");
+          print("- payment_providers: " + db.payment_providers.countDocuments() + " documents");
+          print("- audit_logs: " + db.audit_logs.countDocuments() + " documents");
+          print("\n📊 Total documents: " + (db.users.countDocuments() + db.wallets.countDocuments() + db.transactions.countDocuments() + db.purchases.countDocuments() + db.payment_providers.countDocuments() + db.audit_logs.countDocuments()));
+          print("\n✅ Credit System Database is ready for development!");
+        mode: '0644'
+
+    - name: Execute database structure setup
       shell: |
-        echo "🗑️  Dropping entire database..."
-        kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_service }} -- \
-          mongosh "mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}" \
-          --eval "
-            print('🗑️  Dropping database: {{ database_name }}');
-            db = db.getSiblingDB('{{ database_name }}');
-            db.dropDatabase();
-            print('✅ Database dropped successfully');
-          "
-      ignore_errors: true
-
-    - name: Wait for database drop to complete
-      shell: sleep 2
-      changed_when: false
-
-    - name: Create collections
-      shell: |
-        echo "📋 Creating collections..."
-        kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_service }} -- \
-          mongosh "mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}" \
-          --eval "
-            use {{ database_name }};
-            const collections = ['users', 'wallets', 'transactions', 'purchases', 'payment_providers', 'audit_logs'];
-            collections.forEach(function(collection) {
-              if (!db.getCollectionNames().includes(collection)) {
-                db.createCollection(collection);
-                print('✅ Created collection: ' + collection);
-              } else {
-                print('ℹ️  Collection exists: ' + collection);
-              }
-            });
-          "
-      ignore_errors: true
-
-    - name: Create users indexes
-      shell: |
-        echo "🔍 Creating users indexes..."
-        kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_service }} -- \
-          mongosh "mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}" \
-          --eval "
-            use {{ database_name }};
-            try { db.users.createIndex({email: 1}, {unique: true, name: 'email_unique'}); print('✅ email_unique'); } catch(e) { if (e.code === 85) print('ℹ️  email_unique exists'); }
-            try { db.users.createIndex({username: 1}, {unique: true, name: 'username_unique'}); print('✅ username_unique'); } catch(e) { if (e.code === 85) print('ℹ️  username_unique exists'); }
-            try { db.users.createIndex({status: 1}, {name: 'status_index'}); print('✅ status_index'); } catch(e) { if (e.code === 85) print('ℹ️  status_index exists'); }
-          "
-      ignore_errors: true
-
-    - name: Create wallets indexes
-      shell: |
-        echo "🔍 Creating wallets indexes..."
-        kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_service }} -- \
-          mongosh "mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}" \
-          --eval "
-            use {{ database_name }};
-            try { db.wallets.createIndex({user_id: 1}, {unique: true, name: 'user_id_unique'}); print('✅ user_id_unique'); } catch(e) { if (e.code === 85) print('ℹ️  user_id_unique exists'); }
-            try { db.wallets.createIndex({balance: 1}, {name: 'balance_index'}); print('✅ balance_index'); } catch(e) { if (e.code === 85) print('ℹ️  balance_index exists'); }
-          "
-      ignore_errors: true
-
-    - name: Create transactions indexes
-      shell: |
-        echo "🔍 Creating transactions indexes..."
-        kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_service }} -- \
-          mongosh "mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}" \
-          --eval "
-            use {{ database_name }};
-            try { db.transactions.createIndex({user_id: 1}, {name: 'user_id_index'}); print('✅ user_id_index'); } catch(e) { if (e.code === 85) print('ℹ️  user_id_index exists'); }
-            try { db.transactions.createIndex({type: 1}, {name: 'type_index'}); print('✅ type_index'); } catch(e) { if (e.code === 85) print('ℹ️  type_index exists'); }
-            try { db.transactions.createIndex({timestamp: 1}, {name: 'timestamp_index'}); print('✅ timestamp_index'); } catch(e) { if (e.code === 85) print('ℹ️  timestamp_index exists'); }
-          "
-      ignore_errors: true
-
-    - name: Create purchases indexes
-      shell: |
-        echo "🔍 Creating purchases indexes..."
-        kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_service }} -- \
-          mongosh "mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}" \
-          --eval "
-            use {{ database_name }};
-            try { db.purchases.createIndex({user_id: 1}, {name: 'user_id_index'}); print('✅ user_id_index'); } catch(e) { if (e.code === 85) print('ℹ️  user_id_index exists'); }
-            try { db.purchases.createIndex({provider: 1}, {name: 'provider_index'}); print('✅ provider_index'); } catch(e) { if (e.code === 85) print('ℹ️  provider_index exists'); }
-            try { db.purchases.createIndex({status: 1}, {name: 'status_index'}); print('✅ status_index'); } catch(e) { if (e.code === 85) print('ℹ️  status_index exists'); }
-          "
-      ignore_errors: true
-
-    - name: Create payment_providers indexes
-      shell: |
-        echo "🔍 Creating payment_providers indexes..."
-        kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_service }} -- \
-          mongosh "mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}" \
-          --eval "
-            use {{ database_name }};
-            try { db.payment_providers.createIndex({user_id: 1}, {name: 'user_id_index'}); print('✅ user_id_index'); } catch(e) { if (e.code === 85) print('ℹ️  user_id_index exists'); }
-            try { db.payment_providers.createIndex({purchase_token: 1}, {unique: true, name: 'purchase_token_unique'}); print('✅ purchase_token_unique'); } catch(e) { if (e.code === 85) print('ℹ️  purchase_token_unique exists'); }
-          "
-      ignore_errors: true
-
-    - name: Create audit_logs indexes
-      shell: |
-        echo "🔍 Creating audit_logs indexes..."
-        kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_service }} -- \
-          mongosh "mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}" \
-          --eval "
-            use {{ database_name }};
-            try { db.audit_logs.createIndex({user_id: 1}, {name: 'user_id_index'}); print('✅ user_id_index'); } catch(e) { if (e.code === 85) print('ℹ️  user_id_index exists'); }
-            try { db.audit_logs.createIndex({action: 1}, {name: 'action_index'}); print('✅ action_index'); } catch(e) { if (e.code === 85) print('ℹ️  action_index exists'); }
-            try { db.audit_logs.createIndex({timestamp: 1}, {name: 'timestamp_index'}); print('✅ timestamp_index'); } catch(e) { if (e.code === 85) print('ℹ️  timestamp_index exists'); }
-          "
-      ignore_errors: true
+        kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_release_name }} -- mongosh -u {{ app_user }} -p "{{ app_password }}" --authenticationDatabase {{ mongodb_auth_db }} --eval "$(cat /tmp/setup_database.js)"
       register: db_setup_result
       changed_when: true
 
-    - name: Verify database structure
-      shell: |
-        echo "🔍 Verifying database structure..."
-        kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_service }} -- \
-          mongosh "mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}" \
-          --eval "
-            use {{ database_name }};
-            print('📋 Collections: ' + db.getCollectionNames().join(', '));
-            print('✅ Database structure verified');
-          "
-      register: db_verification
-      changed_when: false
-      ignore_errors: true
+    - name: Display database setup results
+      debug:
+        msg: "{{ db_setup_result.stdout }}"
 
-    - name: Display database setup summary
+    - name: Verify database collections
+      shell: |
+        kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_release_name }} -- mongosh -u {{ app_user }} -p "{{ app_password }}" --authenticationDatabase {{ mongodb_auth_db }} --eval "
+          db = db.getSiblingDB('credit_system');
+          print('\\n📋 COLLECTION SUMMARY:');
+          print('=====================');
+          db.getCollectionNames().forEach(function(collection) {
+            print(collection + ': ' + db[collection].countDocuments() + ' documents');
+          });
+          print('\\n📊 TOTAL DOCUMENTS: ' + db.getCollectionNames().reduce(function(total, collection) {
+            return total + db[collection].countDocuments();
+          }, 0));
+        "
+      register: collection_summary
+      changed_when: false
+
+    - name: Display collection summary
+      debug:
+        msg: "{{ collection_summary.stdout }}"
+
+    - name: Clean up temporary files
+      file:
+        path: "/tmp/setup_database.js"
+        state: absent
+
+    - name: Display database structure summary
       debug:
         msg: |
-          🗄️ Credit System Database Structure Setup Complete!
+          🗄️ MongoDB Database Structure Setup Complete!
           
-          📋 Modular Database Design:
-          - users (User Management Module)
-          - wallets (Wallet Module) 
-          - transactions (Transactions Module)
-          - purchases (Purchases Module)
-          - payment_providers (Payments Module)
-          - audit_logs (Audit/Admin Module)
+          📋 Collections Created:
+          - users: User management and authentication
+          - wallets: Credit balance tracking per user
+          - transactions: Complete ledger of all credit/debit operations
+          - purchases: Record of all successful payments
+          - payment_providers: External payment validation data
+          - audit_logs: Administrative action tracking
           
           🔗 Connection Details:
           - Host: {{ mongodb_host }}
           - Port: {{ mongodb_port }}
           - Database: {{ database_name }}
-          - User: {{ app_username }}
-          - Auth Source: {{ mongodb_auth_source }}
+          - User: {{ app_user }}
+          - Password: {{ app_password }}
+          - Auth Source: {{ mongodb_auth_db }}
           
-          🧪 Test Credentials:
-          - Email: test@example.com
-          - Username: testuser
-          - Password: password123
-          - Balance: 1000 credits
+          📊 Dummy Data Added:
+          - 5 users with different balances
+          - 10 transactions across all users
+          - 9 purchase records from multiple providers
+          - 9 payment provider validation records
+          - 5 audit log entries for admin actions
           
-          📊 Database Verification:
-          {{ db_verification.stdout }}
-          
-          ✅ Database structure is ready for development!
-
-    - name: Display connection string for applications
-      debug:
-        msg: |
-          🔗 MongoDB Connection String for Applications:
-          
-          mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}
-          
-          📝 Environment Variables:
-          MONGODB_URI=mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}
-          MONGODB_DATABASE={{ database_name }}
-          MONGODB_USER={{ app_username }}
-          MONGODB_PASSWORD={{ app_password }} 
+          ✅ Database is ready for application development! 

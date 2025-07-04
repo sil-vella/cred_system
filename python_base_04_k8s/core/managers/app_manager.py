@@ -16,7 +16,6 @@ import logging
 from apscheduler.schedulers.background import BackgroundScheduler
 from core.managers.database_manager import DatabaseManager
 from core.managers.redis_manager import RedisManager
-from core.managers.queue_manager import QueueManager
 from core.managers.state_manager import StateManager
 
 
@@ -84,9 +83,7 @@ class AppManager:
         """Get the Redis manager instance."""
         return self.redis_manager
 
-    def get_queue_manager(self):
-        """Get the queue manager instance."""
-        return self.queue_manager
+
 
     def get_state_manager(self):
         """Get the state manager instance."""
@@ -115,9 +112,8 @@ class AppManager:
         self.redis_manager = RedisManager()
         self.rate_limiter_manager = RateLimiterManager()
         self.rate_limiter_manager.set_redis_manager(self.redis_manager)
-        self.queue_manager = QueueManager()
         self.state_manager = StateManager(redis_manager=self.redis_manager, database_manager=self.db_manager)
-        custom_log("✅ Centralized database, Redis, Queue, and State managers initialized")
+        custom_log("✅ Centralized database, Redis, and State managers initialized")
 
         # Initialize services
         self.services_manager.initialize_services()
@@ -136,8 +132,7 @@ class AppManager:
         # Set up monitoring middleware
         self._setup_monitoring()
         
-        # Start queue workers
-        self.queue_manager.start_workers()
+
         
         # Mark as initialized
         self._initialized = True

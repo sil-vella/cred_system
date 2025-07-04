@@ -87,7 +87,6 @@ class ModuleRegistry:
             "user_actions": ["user_management"],  # Needs user management
             "wallet": ["connection_api", "user_management"],  # Needs API and users
             "transactions": ["connection_api", "user_management", "wallet"],  # Needs all above
-            "queue_api": ["connection_api"],  # Needs API infrastructure
         }
         
         custom_log(f"Module dependencies defined: {dependencies}")
@@ -129,12 +128,6 @@ class ModuleRegistry:
                 "priority": 5,  
                 "health_check_enabled": True,
                 "async_processing": False,
-            },
-            "queue_api": {
-                "enabled": True,
-                "priority": 6,
-                "health_check_enabled": True,
-                "queue_management": True,
             },
         }
     

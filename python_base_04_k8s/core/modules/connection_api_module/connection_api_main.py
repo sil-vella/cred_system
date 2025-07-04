@@ -75,16 +75,6 @@ class ConnectionAPI(BaseModule):
         self._register_route_helper("/", self.home, methods=["GET"])
         self._register_route_helper("/auth/refresh", self.refresh_token_endpoint, methods=["POST"])
         
-        # Register queue API blueprint
-        try:
-            from core.modules.queue_api_module.queue_api_main import queue_api
-            self.app.register_blueprint(queue_api, name='queue_api_blueprint')
-            custom_log("✅ Queue API blueprint registered")
-        except ImportError as e:
-            custom_log(f"⚠️ Could not import queue_api blueprint: {e}")
-        except Exception as e:
-            custom_log(f"⚠️ Error registering queue_api blueprint: {e}")
-        
         custom_log(f"ConnectionAPI registered {len(self.registered_routes)} routes")
 
     def initialize_database(self):

@@ -1,7 +1,6 @@
 from core.modules.base_module import BaseModule
 from core.managers.database_manager import DatabaseManager
 from core.managers.redis_manager import RedisManager
-from core.managers.queue_manager import QueueManager, QueuePriority
 from tools.logger.custom_logging import custom_log
 from flask import request, jsonify
 from datetime import datetime
@@ -22,13 +21,11 @@ class UserManagementModule(BaseModule):
             self.db_manager = app_manager.get_db_manager(role="read_write")
             self.analytics_db = app_manager.get_db_manager(role="read_only")
             self.redis_manager = app_manager.get_redis_manager()
-            self.queue_manager = app_manager.get_queue_manager()
         else:
             # Fallback for testing or when app_manager is not provided
             self.db_manager = DatabaseManager(role="read_write")
             self.analytics_db = DatabaseManager(role="read_only")
             self.redis_manager = RedisManager()
-            self.queue_manager = QueueManager()
         
         custom_log("UserManagementModule created with shared managers")
 
@@ -65,7 +62,7 @@ class UserManagementModule(BaseModule):
             custom_log("⚠️ User operations will be limited - suitable for local development")
 
     def create_user(self):
-        """Create a new user using queue system."""
+        """Create a new user directly in database."""
         try:
             data = request.get_json()
             email = data.get('email')
@@ -75,44 +72,43 @@ class UserManagementModule(BaseModule):
             if not all([email, username, password]):
                 return jsonify({'error': 'email, username, and password are required'}), 400
             
+            # Check if user already exists
+            existing_user = self.db_manager.find_one("users", {"email": email})
+            if existing_user:
+                return jsonify({'error': 'User with this email already exists'}), 409
+            
             # Hash password
             hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
             
-            # Prepare user data for queue
+            # Prepare user data
             user_data = {
                 'email': email,
                 'username': username,
-                'password': hashed_password.decode('utf-8'),  # Convert bytes to string for JSON
+                'password': hashed_password.decode('utf-8'),
                 'created_at': datetime.utcnow().isoformat(),
                 'updated_at': datetime.utcnow().isoformat(),
                 'status': 'active'
             }
             
-            # Queue the user creation task
-            task_data = {
-                'operation': 'insert',
-                'collection': 'users',
-                'data': user_data
-            }
+            # Insert user directly into database
+            result = self.db_manager.insert_one("users", user_data)
             
-            task_id = self.queue_manager.enqueue(
-                queue_name='default',
-                task_type='user_creation',
-                task_data=task_data,
-                priority=QueuePriority.NORMAL
-            )
+            if result:
+                # Remove password from response
+                user_data.pop('password', None)
+                user_data['_id'] = str(result.inserted_id)
+                
+                return jsonify({
+                    'message': 'User created successfully',
+                    'user': user_data,
+                    'status': 'created'
+                }), 201
             
-            return jsonify({
-                'message': 'User creation is being processed',
-                'task_id': task_id,
-                'email': email,
-                'username': username,
-                'status': 'pending'
-            }), 202  # 202 Accepted - request is being processed
+            return jsonify({'error': 'Failed to create user'}), 500
             
         except Exception as e:
-            self.logger.error(f"Error queuing user creation: {e}")
-            return jsonify({'error': 'Failed to queue user creation'}), 500
+            custom_log(f"Error creating user: {e}")
+            return jsonify({'error': 'Failed to create user'}), 500
 
     def get_user(self, user_id):
         """Get user by ID."""
@@ -126,11 +122,11 @@ class UserManagementModule(BaseModule):
             return jsonify(user), 200
             
         except Exception as e:
-            self.logger.error(f"Error getting user: {e}")
+            custom_log(f"Error getting user: {e}")
             return jsonify({'error': 'Failed to get user'}), 500
 
     def update_user(self, user_id):
-        """Update user information using queue system."""
+        """Update user information directly in database."""
         try:
             data = request.get_json()
             update_data = {'updated_at': datetime.utcnow().isoformat()}
@@ -141,59 +137,40 @@ class UserManagementModule(BaseModule):
                 if field in data:
                     update_data[field] = data[field]
             
-            # Queue the user update task
-            task_data = {
-                'operation': 'update',
-                'collection': 'users',
-                'query': {'_id': user_id},
-                'update_data': update_data
-            }
+            # Update user directly in database
+            result = self.db_manager.update_one("users", {"_id": user_id}, {"$set": update_data})
             
-            task_id = self.queue_manager.enqueue(
-                queue_name='default',
-                task_type='user_update',
-                task_data=task_data,
-                priority=QueuePriority.NORMAL
-            )
-            
-            return jsonify({
-                'message': 'User update is being processed',
-                'task_id': task_id,
-                'user_id': user_id,
-                'status': 'pending'
-            }), 202  # 202 Accepted - request is being processed
+            if result and result.modified_count > 0:
+                return jsonify({
+                    'message': 'User updated successfully',
+                    'user_id': user_id,
+                    'status': 'updated'
+                }), 200
+            else:
+                return jsonify({'error': 'User not found or no changes made'}), 404
                 
         except Exception as e:
-            self.logger.error(f"Error queuing user update: {e}")
-            return jsonify({'error': 'Failed to queue user update'}), 500
+            custom_log(f"Error updating user: {e}")
+            return jsonify({'error': 'Failed to update user'}), 500
 
     def delete_user(self, user_id):
-        """Delete a user using queue system."""
+        """Delete a user directly from database."""
         try:
-            # Queue the user deletion task
-            task_data = {
-                'operation': 'delete',
-                'collection': 'users',
-                'query': {'_id': user_id}
-            }
+            # Delete user directly from database
+            result = self.db_manager.delete_one("users", {"_id": user_id})
             
-            task_id = self.queue_manager.enqueue(
-                queue_name='high_priority',
-                task_type='user_deletion',
-                task_data=task_data,
-                priority=QueuePriority.HIGH
-            )
-            
-            return jsonify({
-                'message': 'User deletion is being processed',
-                'task_id': task_id,
-                'user_id': user_id,
-                'status': 'pending'
-            }), 202  # 202 Accepted - request is being processed
+            if result and result.deleted_count > 0:
+                return jsonify({
+                    'message': 'User deleted successfully',
+                    'user_id': user_id,
+                    'status': 'deleted'
+                }), 200
+            else:
+                return jsonify({'error': 'User not found'}), 404
                 
         except Exception as e:
-            self.logger.error(f"Error queuing user deletion: {e}")
-            return jsonify({'error': 'Failed to queue user deletion'}), 500
+            custom_log(f"Error deleting user: {e}")
+            return jsonify({'error': 'Failed to delete user'}), 500
 
     def search_users(self):
         """Search users with filters."""
@@ -217,7 +194,7 @@ class UserManagementModule(BaseModule):
             return jsonify({'users': users}), 200
             
         except Exception as e:
-            self.logger.error(f"Error searching users: {e}")
+            custom_log(f"Error searching users: {e}")
             return jsonify({'error': 'Failed to search users'}), 500
 
     def health_check(self) -> Dict[str, Any]:
