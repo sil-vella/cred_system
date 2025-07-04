@@ -54,11 +54,11 @@
         kubectl apply -f {{ manifest_output_dir }}/redis/templates/configmap.yaml -n {{ flask_namespace }} || true
         kubectl apply -f {{ manifest_output_dir }}/redis/templates/networkpolicy.yaml -n {{ flask_namespace }} || true
         
-        # Apply remaining templates
+        # Apply remaining templates (excluding PVC)
         for file in {{ manifest_output_dir }}/redis/templates/*.yaml; do
           case "$(basename "$file")" in
-            secret.yaml|serviceaccount.yaml|configmap.yaml|networkpolicy.yaml)
-              # Already applied above
+            secret.yaml|serviceaccount.yaml|configmap.yaml|networkpolicy.yaml|pvc.yaml)
+              # Skip PVC and already applied templates
               ;;
             *)
               kubectl apply -f "$file" -n {{ flask_namespace }} || true
@@ -66,8 +66,16 @@
           esac
         done
         
-        # Apply any subdirectory templates (standalone, master, etc.)
-        find {{ manifest_output_dir }}/redis/templates/ -type d -mindepth 1 -exec kubectl apply -f {} -n {{ flask_namespace }} \; || true
+        # Apply any subdirectory templates (standalone, master, etc.) excluding PVC
+        find {{ manifest_output_dir }}/redis/templates/ -type d -mindepth 1 -exec sh -c '
+          for dir in "$@"; do
+            for file in "$dir"/*.yaml; do
+              if [[ -f "$file" && "$(basename "$file")" != *"pvc"* ]]; then
+                kubectl apply -f "$file" -n {{ flask_namespace }} || true
+              fi
+            done
+          done
+        ' sh {} +
       changed_when: true
 
     - name: Wait for Redis statefulset to be ready
@@ -122,11 +130,11 @@
         echo "=== SERVICE STATUS ==="
         kubectl get services -n {{ flask_namespace }} {{ redis_release_name }}-master
         echo ""
-        echo "=== PERSISTENT VOLUME STATUS ==="
-        kubectl get pvc -n {{ flask_namespace }}
+        echo "=== VOLUME STATUS ==="
+        kubectl get pvc -n {{ flask_namespace }} || echo "No persistent volumes (using ephemeral storage)"
         echo ""
         echo "=== STORAGE USAGE ==="
-        kubectl exec -n {{ flask_namespace }} statefulset/{{ redis_release_name }}-master -- df -h /bitnami/redis/data || echo "Storage check failed"
+        kubectl exec -n {{ flask_namespace }} statefulset/{{ redis_release_name }}-master -- df -h /bitnami/redis/data || echo "Storage check failed (ephemeral storage)"
         echo ""
         echo "=== REDIS INFO ==="
         kubectl exec -n {{ flask_namespace }} statefulset/{{ redis_release_name }}-master -- redis-cli \
@@ -152,7 +160,7 @@
           - Release: {{ redis_release_name }}
           - Redis Password: 7cNfJTOcyDxdhK5NZubMoE7KS
           - Database: 0
-          - Storage: 5Gi (local-path)
+          - Storage: Ephemeral (no persistence)
           - Namespace: {{ flask_namespace }}
           
           Status:

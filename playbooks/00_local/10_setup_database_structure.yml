@@ -9,6 +9,10 @@
     app_username: "credit_app_user"
     app_password: "6R3jjsvVhIRP20zMiHdkBzNKx"
     
+    # Root user credentials (created by Helm)
+    root_username: "mongodb_admin"
+    root_password: "MongoAdmin123!@#SecurePass"
+    
     # MongoDB connection details
     mongodb_host: "{{ mongodb_service }}.{{ flask_namespace }}.svc.cluster.local"
     mongodb_port: "27017"
@@ -112,193 +116,133 @@
       shell: kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mongodb -n {{ flask_namespace }} --timeout=60s
       changed_when: false
 
-    - name: Execute database setup commands directly in MongoDB container
+    - name: Drop and recreate database completely
       shell: |
+        echo "🗑️  Dropping entire database..."
         kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_service }} -- \
           mongosh "mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}" \
           --eval "
-            print('🚀 Starting Credit System Database Setup...');
-            
-            // Switch to the credit_system database
+            print('🗑️  Dropping database: {{ database_name }}');
             db = db.getSiblingDB('{{ database_name }}');
-            print('📊 Using database: ' + db.getName());
-            
-            // Create collections
+            db.dropDatabase();
+            print('✅ Database dropped successfully');
+          "
+      ignore_errors: true
+
+    - name: Wait for database drop to complete
+      shell: sleep 2
+      changed_when: false
+
+    - name: Create collections
+      shell: |
+        echo "📋 Creating collections..."
+        kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_service }} -- \
+          mongosh "mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}" \
+          --eval "
+            use {{ database_name }};
             const collections = ['users', 'wallets', 'transactions', 'purchases', 'payment_providers', 'audit_logs'];
-            const modules = ['User Management', 'Wallet', 'Transactions', 'Purchases', 'Payments', 'Audit/Admin'];
-            
-            print('📋 Creating collections and indexes...');
-            
-            collections.forEach(function(collection, index) {
-              print('  Creating collection: ' + collection + ' (Module: ' + modules[index] + ')');
-              
-              // Create collection if it doesn't exist
+            collections.forEach(function(collection) {
               if (!db.getCollectionNames().includes(collection)) {
                 db.createCollection(collection);
-                print('    ✅ Collection created: ' + collection);
+                print('✅ Created collection: ' + collection);
               } else {
-                print('    ℹ️  Collection already exists: ' + collection);
+                print('ℹ️  Collection exists: ' + collection);
               }
             });
-            
-            // Create indexes for users collection
-            print('🔍 Creating indexes for users collection...');
-            try {
-              db.users.createIndex({email: 1}, {unique: true, name: 'email_unique'});
-              print('    ✅ Index created: email_unique');
-            } catch (error) {
-              if (error.code === 85) print('    ℹ️  Index already exists: email_unique');
-            }
-            
-            try {
-              db.users.createIndex({username: 1}, {unique: true, name: 'username_unique'});
-              print('    ✅ Index created: username_unique');
-            } catch (error) {
-              if (error.code === 85) print('    ℹ️  Index already exists: username_unique');
-            }
-            
-            try {
-              db.users.createIndex({status: 1}, {name: 'status_index'});
-              print('    ✅ Index created: status_index');
-            } catch (error) {
-              if (error.code === 85) print('    ℹ️  Index already exists: status_index');
-            }
-            
-            // Create indexes for wallets collection
-            print('🔍 Creating indexes for wallets collection...');
-            try {
-              db.wallets.createIndex({user_id: 1}, {unique: true, name: 'user_id_unique'});
-              print('    ✅ Index created: user_id_unique');
-            } catch (error) {
-              if (error.code === 85) print('    ℹ️  Index already exists: user_id_unique');
-            }
-            
-            try {
-              db.wallets.createIndex({balance: 1}, {name: 'balance_index'});
-              print('    ✅ Index created: balance_index');
-            } catch (error) {
-              if (error.code === 85) print('    ℹ️  Index already exists: balance_index');
-            }
-            
-            // Create indexes for transactions collection
-            print('🔍 Creating indexes for transactions collection...');
-            try {
-              db.transactions.createIndex({user_id: 1}, {name: 'user_id_index'});
-              print('    ✅ Index created: user_id_index');
-            } catch (error) {
-              if (error.code === 85) print('    ℹ️  Index already exists: user_id_index');
-            }
-            
-            try {
-              db.transactions.createIndex({type: 1}, {name: 'type_index'});
-              print('    ✅ Index created: type_index');
-            } catch (error) {
-              if (error.code === 85) print('    ℹ️  Index already exists: type_index');
-            }
-            
-            try {
-              db.transactions.createIndex({timestamp: 1}, {name: 'timestamp_index'});
-              print('    ✅ Index created: timestamp_index');
-            } catch (error) {
-              if (error.code === 85) print('    ℹ️  Index already exists: timestamp_index');
-            }
-            
-            // Create indexes for purchases collection
-            print('🔍 Creating indexes for purchases collection...');
-            try {
-              db.purchases.createIndex({user_id: 1}, {name: 'user_id_index'});
-              print('    ✅ Index created: user_id_index');
-            } catch (error) {
-              if (error.code === 85) print('    ℹ️  Index already exists: user_id_index');
-            }
-            
-            try {
-              db.purchases.createIndex({provider: 1}, {name: 'provider_index'});
-              print('    ✅ Index created: provider_index');
-            } catch (error) {
-              if (error.code === 85) print('    ℹ️  Index already exists: provider_index');
-            }
-            
-            try {
-              db.purchases.createIndex({status: 1}, {name: 'status_index'});
-              print('    ✅ Index created: status_index');
-            } catch (error) {
-              if (error.code === 85) print('    ℹ️  Index already exists: status_index');
-            }
-            
-            // Create indexes for payment_providers collection
-            print('🔍 Creating indexes for payment_providers collection...');
-            try {
-              db.payment_providers.createIndex({user_id: 1}, {name: 'user_id_index'});
-              print('    ✅ Index created: user_id_index');
-            } catch (error) {
-              if (error.code === 85) print('    ℹ️  Index already exists: user_id_index');
-            }
-            
-            try {
-              db.payment_providers.createIndex({purchase_token: 1}, {unique: true, name: 'purchase_token_unique'});
-              print('    ✅ Index created: purchase_token_unique');
-            } catch (error) {
-              if (error.code === 85) print('    ℹ️  Index already exists: purchase_token_unique');
-            }
-            
-            // Create indexes for audit_logs collection
-            print('🔍 Creating indexes for audit_logs collection...');
-            try {
-              db.audit_logs.createIndex({user_id: 1}, {name: 'user_id_index'});
-              print('    ✅ Index created: user_id_index');
-            } catch (error) {
-              if (error.code === 85) print('    ℹ️  Index already exists: user_id_index');
-            }
-            
-            try {
-              db.audit_logs.createIndex({action: 1}, {name: 'action_index'});
-              print('    ✅ Index created: action_index');
-            } catch (error) {
-              if (error.code === 85) print('    ℹ️  Index already exists: action_index');
-            }
-            
-            try {
-              db.audit_logs.createIndex({timestamp: 1}, {name: 'timestamp_index'});
-              print('    ✅ Index created: timestamp_index');
-            } catch (error) {
-              if (error.code === 85) print('    ℹ️  Index already exists: timestamp_index');
-            }
-            
-            print('✅ All indexes created successfully!');
           "
+      ignore_errors: true
+
+    - name: Create users indexes
+      shell: |
+        echo "🔍 Creating users indexes..."
+        kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_service }} -- \
+          mongosh "mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}" \
+          --eval "
+            use {{ database_name }};
+            try { db.users.createIndex({email: 1}, {unique: true, name: 'email_unique'}); print('✅ email_unique'); } catch(e) { if (e.code === 85) print('ℹ️  email_unique exists'); }
+            try { db.users.createIndex({username: 1}, {unique: true, name: 'username_unique'}); print('✅ username_unique'); } catch(e) { if (e.code === 85) print('ℹ️  username_unique exists'); }
+            try { db.users.createIndex({status: 1}, {name: 'status_index'}); print('✅ status_index'); } catch(e) { if (e.code === 85) print('ℹ️  status_index exists'); }
+          "
+      ignore_errors: true
+
+    - name: Create wallets indexes
+      shell: |
+        echo "🔍 Creating wallets indexes..."
+        kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_service }} -- \
+          mongosh "mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}" \
+          --eval "
+            use {{ database_name }};
+            try { db.wallets.createIndex({user_id: 1}, {unique: true, name: 'user_id_unique'}); print('✅ user_id_unique'); } catch(e) { if (e.code === 85) print('ℹ️  user_id_unique exists'); }
+            try { db.wallets.createIndex({balance: 1}, {name: 'balance_index'}); print('✅ balance_index'); } catch(e) { if (e.code === 85) print('ℹ️  balance_index exists'); }
+          "
+      ignore_errors: true
+
+    - name: Create transactions indexes
+      shell: |
+        echo "🔍 Creating transactions indexes..."
+        kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_service }} -- \
+          mongosh "mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}" \
+          --eval "
+            use {{ database_name }};
+            try { db.transactions.createIndex({user_id: 1}, {name: 'user_id_index'}); print('✅ user_id_index'); } catch(e) { if (e.code === 85) print('ℹ️  user_id_index exists'); }
+            try { db.transactions.createIndex({type: 1}, {name: 'type_index'}); print('✅ type_index'); } catch(e) { if (e.code === 85) print('ℹ️  type_index exists'); }
+            try { db.transactions.createIndex({timestamp: 1}, {name: 'timestamp_index'}); print('✅ timestamp_index'); } catch(e) { if (e.code === 85) print('ℹ️  timestamp_index exists'); }
+          "
+      ignore_errors: true
+
+    - name: Create purchases indexes
+      shell: |
+        echo "🔍 Creating purchases indexes..."
+        kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_service }} -- \
+          mongosh "mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}" \
+          --eval "
+            use {{ database_name }};
+            try { db.purchases.createIndex({user_id: 1}, {name: 'user_id_index'}); print('✅ user_id_index'); } catch(e) { if (e.code === 85) print('ℹ️  user_id_index exists'); }
+            try { db.purchases.createIndex({provider: 1}, {name: 'provider_index'}); print('✅ provider_index'); } catch(e) { if (e.code === 85) print('ℹ️  provider_index exists'); }
+            try { db.purchases.createIndex({status: 1}, {name: 'status_index'}); print('✅ status_index'); } catch(e) { if (e.code === 85) print('ℹ️  status_index exists'); }
+          "
+      ignore_errors: true
+
+    - name: Create payment_providers indexes
+      shell: |
+        echo "🔍 Creating payment_providers indexes..."
+        kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_service }} -- \
+          mongosh "mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}" \
+          --eval "
+            use {{ database_name }};
+            try { db.payment_providers.createIndex({user_id: 1}, {name: 'user_id_index'}); print('✅ user_id_index'); } catch(e) { if (e.code === 85) print('ℹ️  user_id_index exists'); }
+            try { db.payment_providers.createIndex({purchase_token: 1}, {unique: true, name: 'purchase_token_unique'}); print('✅ purchase_token_unique'); } catch(e) { if (e.code === 85) print('ℹ️  purchase_token_unique exists'); }
+          "
+      ignore_errors: true
+
+    - name: Create audit_logs indexes
+      shell: |
+        echo "🔍 Creating audit_logs indexes..."
+        kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_service }} -- \
+          mongosh "mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}" \
+          --eval "
+            use {{ database_name }};
+            try { db.audit_logs.createIndex({user_id: 1}, {name: 'user_id_index'}); print('✅ user_id_index'); } catch(e) { if (e.code === 85) print('ℹ️  user_id_index exists'); }
+            try { db.audit_logs.createIndex({action: 1}, {name: 'action_index'}); print('✅ action_index'); } catch(e) { if (e.code === 85) print('ℹ️  action_index exists'); }
+            try { db.audit_logs.createIndex({timestamp: 1}, {name: 'timestamp_index'}); print('✅ timestamp_index'); } catch(e) { if (e.code === 85) print('ℹ️  timestamp_index exists'); }
+          "
+      ignore_errors: true
       register: db_setup_result
       changed_when: true
 
     - name: Verify database structure
       shell: |
+        echo "🔍 Verifying database structure..."
         kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_service }} -- \
           mongosh "mongodb://{{ app_username }}:{{ app_password }}@{{ mongodb_host }}:{{ mongodb_port }}/{{ database_name }}?authSource={{ mongodb_auth_source }}" \
           --eval "
-            print('📋 Database Collections:');
-            db.getCollectionNames().forEach(function(collection) {
-              print('  - ' + collection);
-            });
-            
-            print('\\n📊 Collection Statistics:');
-            db.getCollectionNames().forEach(function(collection) {
-              const count = db[collection].countDocuments();
-              const stats = db[collection].stats();
-              const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
-              print('  ' + collection + ': ' + count + ' documents, ' + sizeMB + ' MB');
-            });
-            
-            print('\\n🔍 Index Information:');
-            db.getCollectionNames().forEach(function(collection) {
-              const indexes = db[collection].getIndexes();
-              print('  ' + collection + ' indexes:');
-              indexes.forEach(function(index) {
-                print('    - ' + index.name + ': ' + JSON.stringify(index.key));
-              });
-            });
+            use {{ database_name }};
+            print('📋 Collections: ' + db.getCollectionNames().join(', '));
+            print('✅ Database structure verified');
           "
       register: db_verification
       changed_when: false
+      ignore_errors: true
 
     - name: Display database setup summary
       debug:

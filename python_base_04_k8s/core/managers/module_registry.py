@@ -5,6 +5,9 @@ This replaces the plugin registry system with a more direct module approach.
 
 from typing import Dict, List, Type, Any
 from tools.logger.custom_logging import custom_log
+import os
+import importlib
+import inspect
 
 
 class ModuleRegistry:
@@ -16,26 +19,59 @@ class ModuleRegistry:
     @staticmethod
     def get_modules() -> Dict[str, Type]:
         """
-        Return dictionary of module_key: ModuleClass mappings.
-        This is the central place to register all available modules.
+        Auto-discover modules by scanning the modules directory.
+        Looks for directories with __init__.py files and imports the main module class.
         
         :return: Dictionary mapping module keys to module classes
         """
-        # Import modules here to avoid circular imports
-        from core.modules.connection_api import ConnectionAPI
-        from core.modules.wallet_module import WalletModule
-        from core.modules.transactions_module import TransactionsModule
-        from core.modules.user_management import UserManagementModule
+        modules = {}
+        modules_dir = os.path.join(os.path.dirname(__file__), '..', 'modules')
         
-        modules = {
-            "connection_api": ConnectionAPI,
-            "wallet": WalletModule,
-            "transactions": TransactionsModule,
-            "user_management": UserManagementModule,
-        }
-        
-        custom_log(f"Discovered {len(modules)} modules: {list(modules.keys())}")
-        return modules
+        try:
+            # Scan the modules directory
+            for item in os.listdir(modules_dir):
+                item_path = os.path.join(modules_dir, item)
+                
+                # Check if it's a directory and has __init__.py
+                if os.path.isdir(item_path) and os.path.exists(os.path.join(item_path, '__init__.py')):
+                    try:
+                        # Import the module package
+                        module_package = f"core.modules.{item}"
+                        module_module = importlib.import_module(module_package)
+                        
+                        # Look for the main module class in __all__ or inspect the module
+                        if hasattr(module_module, '__all__') and module_module.__all__:
+                            # Get the first class from __all__
+                            class_name = module_module.__all__[0]
+                            module_class = getattr(module_module, class_name)
+                        else:
+                            # Fallback: look for classes that inherit from BaseModule
+                            module_class = None
+                            for name, obj in inspect.getmembers(module_module):
+                                if (inspect.isclass(obj) and 
+                                    hasattr(obj, '__bases__') and 
+                                    any('BaseModule' in str(base) for base in obj.__bases__)):
+                                    module_class = obj
+                                    break
+                        
+                        if module_class:
+                            # Use directory name as module key (remove '_module' suffix if present)
+                            module_key = item.replace('_module', '')
+                            modules[module_key] = module_class
+                            custom_log(f"✅ Discovered module: {module_key} -> {module_class.__name__}")
+                        else:
+                            custom_log(f"⚠️ No module class found in {item}")
+                            
+                    except Exception as e:
+                        custom_log(f"❌ Error importing module {item}: {e}")
+                        continue
+            
+            custom_log(f"Auto-discovered {len(modules)} modules: {list(modules.keys())}")
+            return modules
+            
+        except Exception as e:
+            custom_log(f"❌ Error scanning modules directory: {e}")
+            return {}
     
     @staticmethod
     def get_module_dependencies() -> Dict[str, List[str]]:
@@ -48,8 +84,10 @@ class ModuleRegistry:
         dependencies = {
             "connection_api": [],  # Core API - no dependencies
             "user_management": ["connection_api"],  # Needs API infrastructure
+            "user_actions": ["user_management"],  # Needs user management
             "wallet": ["connection_api", "user_management"],  # Needs API and users
             "transactions": ["connection_api", "user_management", "wallet"],  # Needs all above
+            "queue_api": ["connection_api"],  # Needs API infrastructure
         }
         
         custom_log(f"Module dependencies defined: {dependencies}")
@@ -74,17 +112,29 @@ class ModuleRegistry:
                 "health_check_enabled": True,
                 "session_timeout": 3600,
             },
-            "wallet": {
+            "user_actions": {
                 "enabled": True,
                 "priority": 3,
+                "health_check_enabled": True,
+                "declarative_actions": True,
+            },
+            "wallet": {
+                "enabled": True,
+                "priority": 4,
                 "health_check_enabled": True,
                 "cache_enabled": True,
             },
             "transactions": {
                 "enabled": True,
-                "priority": 4,  
+                "priority": 5,  
                 "health_check_enabled": True,
                 "async_processing": False,
+            },
+            "queue_api": {
+                "enabled": True,
+                "priority": 6,
+                "health_check_enabled": True,
+                "queue_management": True,
             },
         }
     

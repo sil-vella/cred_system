@@ -1,0 +1,81 @@
+# User Actions Configuration
+# This file defines declarative actions for the UserActionsModule
+
+actions:
+  get_user_profile:
+    description: "Retrieve user profile information"
+    type: "function"
+    function: "get_user_profile"
+    required_params:
+      - "user_id"
+    optional_params:
+      - "include_preferences"
+      - "include_activity"
+    examples:
+      - description: "Get basic profile"
+        request: '{"user_id": "12345"}'
+      - description: "Get profile with preferences"
+        request: '{"user_id": "12345", "include_preferences": true}'
+
+  update_user_preferences:
+    description: "Update user preferences and settings"
+    type: "function"
+    function: "update_user_preferences"
+    required_params:
+      - "user_id"
+      - "preferences"
+    optional_params:
+      - "notify_user"
+    examples:
+      - description: "Update theme preference"
+        request: '{"user_id": "12345", "preferences": {"theme": "dark"}}'
+
+  send_user_notification:
+    description: "Send a notification to a user"
+    type: "external_api"
+    url: "https://api.notifications.service/send"
+    method: "POST"
+    required_params:
+      - "user_id"
+      - "message"
+    optional_params:
+      - "priority"
+      - "channel"
+    examples:
+      - description: "Send welcome notification"
+        request: '{"user_id": "12345", "message": "Welcome to our platform!", "priority": "normal"}'
+
+  log_user_activity:
+    description: "Log user activity for analytics"
+    type: "database"
+    operation: "insert"
+    collection: "user_activities"
+    required_params:
+      - "user_id"
+      - "activity_type"
+    optional_params:
+      - "metadata"
+      - "timestamp"
+    examples:
+      - description: "Log login activity"
+        request: '{"user_id": "12345", "activity_type": "login", "metadata": {"ip": "192.168.1.1"}}'
+
+  validate_user_permissions:
+    description: "Check if user has specific permissions"
+    type: "function"
+    function: "validate_user_permissions"
+    required_params:
+      - "user_id"
+      - "permission"
+    optional_params:
+      - "resource_id"
+    examples:
+      - description: "Check admin permission"
+        request: '{"user_id": "12345", "permission": "admin"}'
+
+# Global configuration for the module
+config:
+  default_timeout: 30
+  max_retries: 3
+  cache_enabled: true
+  cache_ttl: 300 

@@ -54,8 +54,12 @@
         kubectl apply -f {{ manifest_output_dir }}/mongodb/templates/common-scripts-cm.yaml -n {{ flask_namespace }} || true
         kubectl apply -f {{ manifest_output_dir }}/mongodb/templates/networkpolicy.yaml -n {{ flask_namespace }} || true
         
-        # Apply standalone specific templates
-        kubectl apply -f {{ manifest_output_dir }}/mongodb/templates/standalone/ -n {{ flask_namespace }}
+        # Apply standalone specific templates (excluding PVC)
+        for file in {{ manifest_output_dir }}/mongodb/templates/standalone/*.yaml; do
+          if [[ "$(basename "$file")" != *"pvc"* ]]; then
+            kubectl apply -f "$file" -n {{ flask_namespace }} || true
+          fi
+        done
       changed_when: true
 
     - name: Wait for MongoDB deployment to be ready
@@ -68,6 +72,9 @@
       register: mongodb_ready
       changed_when: mongodb_ready.rc == 0
 
+    # Application user creation is now handled by Helm values.yaml
+    # No manual user creation needed
+
     - name: Display MongoDB deployment status
       shell: |
         echo "=== LOCAL MONGODB DEPLOYMENT STATUS ==="
@@ -79,8 +86,8 @@
         echo "=== SERVICE STATUS ==="
         kubectl get services -n {{ flask_namespace }} {{ mongodb_release_name }}
         echo ""
-        echo "=== PERSISTENT VOLUME STATUS ==="
-        kubectl get pvc -n {{ flask_namespace }}
+        echo "=== VOLUME STATUS ==="
+        kubectl get pvc -n {{ flask_namespace }} || echo "No persistent volumes (using ephemeral storage)"
       register: mongodb_status
       changed_when: false
 
@@ -103,7 +110,7 @@
           - Database: credit_system
           - Application User: credit_app_user
           - Application Password: 6R3jjsvVhIRP20zMiHdkBzNKx
-          - Storage: 10Gi (local-path)
+          - Storage: Ephemeral (no persistence)
           - Namespace: {{ flask_namespace }}
           
           Status:

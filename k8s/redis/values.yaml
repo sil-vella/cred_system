@@ -22,11 +22,11 @@ master:
   
   # Persistence
   persistence:
-    enabled: true
-    storageClass: "standard"
-    size: 5Gi
-    accessModes:
-      - ReadWriteOnce
+    enabled: false
+    # storageClass: "standard"
+    # size: 5Gi
+    # accessModes:
+    #   - ReadWriteOnce
   
   # Resources
   resources:

@@ -18,25 +18,32 @@ auth:
   databases:
     - "credit_system"
 
+# Logging configuration
+logLevel: 0
+systemLog:
+  verbosity: 0
+  destination: file
+  path: /opt/bitnami/mongodb/logs/mongodb.log
+
 # Architecture
 architecture: standalone
 
 # Persistence
 persistence:
-  enabled: true
-  storageClass: "standard"
-  size: 10Gi
-  accessModes:
-    - ReadWriteOnce
+  enabled: false
+  # storageClass: "standard"
+  # size: 10Gi
+  # accessModes:
+  #   - ReadWriteOnce
 
 # Resources
 resources:
   requests:
-    memory: "256Mi"
-    cpu: "100m"
-  limits:
     memory: "512Mi"
     cpu: "200m"
+  limits:
+    memory: "1Gi"
+    cpu: "500m"
 
 # Service configuration
 service:

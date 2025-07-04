@@ -40,7 +40,8 @@ menu_options = [
     "🐍 Deploy Flask application (08_deploy_flask_docker_local.yml)",
     "🔄 Update Flask application (09_update_flask_docker_local.yml)",
     "📈 Deploy full infrastructure stack (image + namespace + MongoDB + Redis + Flask)",
-    "🧪 Test deployment (verify all services are running)"
+    "🧪 Test deployment (verify all services are running)",
+    "🗄️  Setup database structure and add dummy data (10_setup_database_structure.yml + 11_add_dummy_data.yml)"
 ]
 
 print(f"\n📝 Where do you want to start the local development setup?")
@@ -219,6 +220,8 @@ def main():
                 ("Deploy MongoDB", lambda: run_playbook("03_deploy_mongodb_local.yml")),
                 ("Deploy Redis", lambda: run_playbook("04_deploy_redis_local.yml")),
                 ("Deploy Flask", lambda: run_playbook("08_deploy_flask_docker_local.yml")),
+                ("Setup database structure", lambda: run_playbook("10_setup_database_structure.yml")),
+                ("Add dummy data", lambda: run_playbook("11_add_dummy_data.yml")),
                 ("Test deployment", test_deployment)
             ]
         elif start_choice == 1:  # Setup local storage
@@ -245,10 +248,17 @@ def main():
                 ("Setup namespace", lambda: run_playbook("05_setup_flask_namespace_local.yml")),
                 ("Deploy MongoDB", lambda: run_playbook("03_deploy_mongodb_local.yml")),
                 ("Deploy Redis", lambda: run_playbook("04_deploy_redis_local.yml")),
-                ("Deploy Flask", lambda: run_playbook("08_deploy_flask_docker_local.yml"))
+                ("Deploy Flask", lambda: run_playbook("08_deploy_flask_docker_local.yml")),
+                ("Setup database structure", lambda: run_playbook("10_setup_database_structure.yml")),
+                ("Add dummy data", lambda: run_playbook("11_add_dummy_data.yml"))
             ]
         elif start_choice == 9:  # Test deployment
             steps = [("Test deployment", test_deployment)]
+        elif start_choice == 10:  # Database setup and dummy data
+            steps = [
+                ("Setup database structure", lambda: run_playbook("10_setup_database_structure.yml")),
+                ("Add dummy data", lambda: run_playbook("11_add_dummy_data.yml"))
+            ]
 
         # Execute steps
         total_steps = len(steps)

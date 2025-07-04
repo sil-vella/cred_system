@@ -37,12 +37,12 @@ class ModuleManager:
         if hasattr(module_instance, 'initialize'):
             custom_log(f"🔄 Initializing module '{module_key}'...")
             try:
-                # Get the Flask app and connection_api from app_manager
-                if app_manager and hasattr(app_manager, 'app') and hasattr(app_manager, 'connection_api'):
-                    module_instance.initialize(app_manager.app, app_manager.connection_api)
+                # Get the Flask app from app_manager
+                if app_manager and hasattr(app_manager, 'flask_app') and app_manager.flask_app:
+                    module_instance.initialize(app_manager.flask_app)
                     custom_log(f"✅ Module '{module_key}' initialized successfully")
                 else:
-                    custom_log(f"❌ Cannot initialize module '{module_key}': Missing required app_manager attributes")
+                    custom_log(f"❌ Cannot initialize module '{module_key}': Missing required app_manager.flask_app")
             except Exception as e:
                 custom_log(f"❌ Error initializing module '{module_key}': {str(e)}")
                 raise
@@ -187,17 +187,9 @@ class ModuleManager:
             custom_log(f"✅ Module {module_key} registered successfully")
             
             # Initialize the module
-            if hasattr(module_instance, 'initialize') and app_manager.flask_app:
+            if hasattr(module_instance, 'initialize') and hasattr(app_manager, 'flask_app') and app_manager.flask_app:
                 custom_log(f"🔄 Initializing module: {module_key}")
                 module_instance.initialize(app_manager.flask_app)
-                
-                # Configure the module
-                if hasattr(module_instance, 'configure'):
-                    module_instance.configure()
-                
-                # Register routes
-                if hasattr(module_instance, 'register_routes'):
-                    module_instance.register_routes()
                 
                 # Mark as initialized
                 module_instance._initialized = True

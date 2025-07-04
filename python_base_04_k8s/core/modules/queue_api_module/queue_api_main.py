@@ -6,12 +6,54 @@ Provides API endpoints for queueing database operations and checking task status
 
 from flask import Blueprint, request, jsonify
 from core.managers.queue_manager import QueueManager, QueuePriority
+from core.modules.base_module import BaseModule
+from tools.logger.custom_logging import custom_log
 from datetime import datetime
 import logging
+from typing import Dict, Any
 
 # Create blueprint
 queue_api = Blueprint('queue_api', __name__, url_prefix='/api/queue')
 logger = logging.getLogger(__name__)
+
+
+class QueueApiModule(BaseModule):
+    def __init__(self, app_manager=None):
+        """Initialize the QueueApiModule."""
+        super().__init__(app_manager)
+        
+        # Set dependencies
+        self.dependencies = ["connection_api"]
+        
+        # Use centralized managers from app_manager instead of creating new instances
+        if app_manager:
+            self.queue_manager = app_manager.get_queue_manager()
+        else:
+            # Fallback for testing or when app_manager is not provided
+            self.queue_manager = QueueManager()
+        
+        custom_log("QueueApiModule created with shared managers")
+
+    def initialize(self, app):
+        """Initialize the QueueApiModule with Flask app."""
+        self.app = app
+        self.register_routes()
+        self._initialized = True
+        custom_log("QueueApiModule initialized")
+
+    def register_routes(self):
+        """Register queue API routes."""
+        # Register the blueprint
+        self.app.register_blueprint(queue_api)
+        custom_log("✅ Queue API blueprint registered")
+
+    def health_check(self) -> Dict[str, Any]:
+        """Perform health check for QueueApiModule."""
+        health_status = super().health_check()
+        health_status['dependencies'] = self.dependencies
+        health_status['queue_manager_available'] = self.queue_manager is not None
+        return health_status
+
 
 @queue_api.route('/enqueue', methods=['POST'])
 def enqueue_task():
