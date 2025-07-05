@@ -29,9 +29,10 @@ class UserManagementModule(BaseModule):
         
         custom_log("UserManagementModule created with shared managers")
 
-    def initialize(self, app):
-        """Initialize the UserManagementModule with Flask app."""
-        self.app = app
+    def initialize(self, app_manager):
+        """Initialize the UserManagementModule with AppManager."""
+        self.app_manager = app_manager
+        self.app = app_manager.flask_app
         self.initialize_database()
         self.register_routes()
         self._initialized = True

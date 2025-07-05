@@ -50,13 +50,11 @@ class ConnectionAPI(BaseModule):
 
         custom_log(f"ConnectionAPI module created with shared managers")
 
-    def initialize(self, app):
-        """Initialize the ConnectionAPI with a Flask app."""
-        if not hasattr(app, "add_url_rule"):
-            raise RuntimeError("ConnectionAPI requires a valid Flask app instance.")
-        
-        self.app = app
-        custom_log(f"ConnectionAPI initialized with Flask app")
+    def initialize(self, app_manager):
+        """Initialize the ConnectionAPI with AppManager."""
+        self.app_manager = app_manager
+        self.app = app_manager.flask_app
+        custom_log(f"ConnectionAPI initialized with AppManager")
         
         # Ensure collections exist in the database
         self.initialize_database()

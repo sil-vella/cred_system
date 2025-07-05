@@ -37,12 +37,11 @@ class ModuleManager:
         if hasattr(module_instance, 'initialize'):
             custom_log(f"🔄 Initializing module '{module_key}'...")
             try:
-                # Get the Flask app from app_manager
-                if app_manager and hasattr(app_manager, 'flask_app') and app_manager.flask_app:
-                    module_instance.initialize(app_manager.flask_app)
+                if app_manager:
+                    module_instance.initialize(app_manager)
                     custom_log(f"✅ Module '{module_key}' initialized successfully")
                 else:
-                    custom_log(f"❌ Cannot initialize module '{module_key}': Missing required app_manager.flask_app")
+                    custom_log(f"❌ Cannot initialize module '{module_key}': Missing required app_manager")
             except Exception as e:
                 custom_log(f"❌ Error initializing module '{module_key}': {str(e)}")
                 raise
@@ -187,15 +186,15 @@ class ModuleManager:
             custom_log(f"✅ Module {module_key} registered successfully")
             
             # Initialize the module
-            if hasattr(module_instance, 'initialize') and hasattr(app_manager, 'flask_app') and app_manager.flask_app:
+            if hasattr(module_instance, 'initialize'):
                 custom_log(f"🔄 Initializing module: {module_key}")
-                module_instance.initialize(app_manager.flask_app)
+                module_instance.initialize(app_manager)
                 
                 # Mark as initialized
                 module_instance._initialized = True
                 custom_log(f"✅ Module {module_key} initialized successfully")
             else:
-                custom_log(f"❌ Cannot initialize module {module_key} - missing initialize method or Flask app")
+                custom_log(f"❌ Cannot initialize module {module_key} - missing initialize method")
                 
         except Exception as e:
             custom_log(f"❌ Error registering/initializing module {module_key}: {e}")

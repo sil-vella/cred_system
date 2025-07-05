@@ -27,7 +27,11 @@ class BaseModule(ABC):
     
     @abstractmethod
     def initialize(self, app_manager) -> bool:
-        """Initialize module with dependencies and resources"""
+        """
+        Initialize module with dependencies and resources.
+        Should set self.app = app_manager.flask_app for route registration.
+        Should call self.register_routes() after setting self.app.
+        """
         pass
     
     @abstractmethod  
@@ -73,14 +77,11 @@ for module_name in load_order:
     if success:
         # Store initialized module
         module_manager.modules[module_name] = module_instance
-        
-        # Register Flask routes
-        module_instance.register_routes(app_manager.flask_app)
-        
         custom_log(f"✅ Module '{module_name}' initialized successfully")
     else:
         custom_log(f"❌ Module '{module_name}' initialization failed")
 ```
+> **Note:** Each module is responsible for calling `self.register_routes()` inside its own `initialize` method after setting `self.app = app_manager.flask_app`.
 
 ### **4. Runtime Operations**
 ```python
@@ -113,6 +114,9 @@ class WalletModule(BaseModule):
         self.db = app_manager.database_manager
         self.redis = app_manager.redis_manager
         
+        # Set Flask app for route registration
+        self.app = app_manager.flask_app
+        self.register_routes()
         return True
 ```
 
@@ -210,6 +214,9 @@ def initialize(self, app_manager) -> bool:
             custom_log(f"Cache unavailable for {self.NAME}, continuing without cache: {e}")
             self.cache = None
             
+        # Set Flask app and register routes
+        self.app = app_manager.flask_app
+        self.register_routes()
         return True
     except Exception as e:
         custom_log(f"Critical error initializing {self.NAME}: {e}")

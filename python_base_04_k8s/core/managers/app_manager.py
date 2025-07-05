@@ -7,7 +7,7 @@ from core.managers.rate_limiter_manager import RateLimiterManager
 from jinja2 import ChoiceLoader, FileSystemLoader
 from tools.logger.custom_logging import custom_log, function_log, game_play_log, log_function_call
 import os
-from flask import request
+from flask import request, jsonify
 import time
 from utils.config.config import Config
 from redis.exceptions import RedisError
@@ -38,6 +38,7 @@ class AppManager:
         self.redis_manager = None
         self.rate_limiter_manager = None
         self.state_manager = None
+        self.jwt_manager = None
         self._initialized = False
 
         custom_log("AppManager instance created.")
@@ -113,7 +114,11 @@ class AppManager:
         self.rate_limiter_manager = RateLimiterManager()
         self.rate_limiter_manager.set_redis_manager(self.redis_manager)
         self.state_manager = StateManager(redis_manager=self.redis_manager, database_manager=self.db_manager)
-        custom_log("✅ Centralized database, Redis, and State managers initialized")
+        
+        # Initialize JWT manager
+        from core.managers.jwt_manager import JWTManager
+        self.jwt_manager = JWTManager(redis_manager=self.redis_manager)
+        custom_log("✅ Centralized database, Redis, State, and JWT managers initialized")
 
         # Initialize services
         self.services_manager.initialize_services()
@@ -128,6 +133,9 @@ class AppManager:
         # Initialize rate limiting middleware
         self._setup_rate_limiting()
         self._setup_rate_limit_headers()
+
+        # Set up authentication middleware
+        self._setup_authentication()
 
         # Set up monitoring middleware
         self._setup_monitoring()
@@ -340,6 +348,80 @@ class AppManager:
                 return {'error': 'Failed to get module health'}, 500
 
         custom_log("Module management endpoints registered")
+
+    def _setup_authentication(self):
+        """Set up global authentication middleware for the Flask app."""
+        if not self.flask_app:
+            return
+
+        # Define public routes that don't require authentication
+        public_routes = [
+            '/health',
+            '/auth/login', 
+            '/auth/register',
+            '/auth/refresh',
+            '/modules/status',
+            '/get-db-data'  # Temporarily public for testing
+        ]
+        
+        # Define route patterns for dynamic routes (like /modules/<module_key>/health)
+        public_patterns = [
+            r'^/modules/.*/health$',  # Module health endpoints
+        ]
+
+        @self.flask_app.before_request
+        def authenticate_request():
+            """Middleware to authenticate requests before processing."""
+            # Skip authentication for OPTIONS requests (CORS preflight)
+            if request.method == 'OPTIONS':
+                return None
+                
+            # Skip authentication for public routes
+            if request.path in public_routes:
+                return None
+                
+            # Check for dynamic public routes using regex patterns
+            import re
+            for pattern in public_patterns:
+                if re.match(pattern, request.path):
+                    return None
+            
+            # Check for Authorization header
+            auth_header = request.headers.get('Authorization')
+            if not auth_header or not auth_header.startswith('Bearer '):
+                return jsonify({
+                    'error': 'Missing or invalid authorization header',
+                    'message': 'Authentication required. Please provide a valid JWT token.',
+                    'code': 'AUTH_REQUIRED'
+                }), 401
+                
+            # Extract and validate JWT token
+            token = auth_header.split(' ')[1]
+            try:
+                from core.managers.jwt_manager import TokenType
+                payload = self.jwt_manager.verify_token(token, TokenType.ACCESS)
+                if not payload:
+                    return jsonify({
+                        'error': 'Invalid or expired token',
+                        'message': 'Please login again to get a fresh token.',
+                        'code': 'TOKEN_INVALID'
+                    }), 401
+                    
+                # Set user context for the request
+                request.user_id = payload.get('user_id')
+                request.user_payload = payload
+                
+                custom_log(f"✅ Authenticated request for user: {request.user_id}")
+                
+            except Exception as e:
+                custom_log(f"❌ Authentication error: {str(e)}", level="ERROR")
+                return jsonify({
+                    'error': 'Token validation failed',
+                    'message': 'Please login again.',
+                    'code': 'TOKEN_VALIDATION_ERROR'
+                }), 401
+
+        custom_log("✅ Global authentication middleware configured")
 
     @log_function_call
     def register_hook(self, hook_name):

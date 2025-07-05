@@ -27,12 +27,12 @@ class BaseModule(ABC):
         custom_log(f"Module {self.module_name} created")
     
     @abstractmethod
-    def initialize(self, app):
+    def initialize(self, app_manager):
         """
-        Initialize the module with the Flask application.
+        Initialize the module with the AppManager.
         This method must be implemented by all modules.
         
-        :param app: Flask application instance
+        :param app_manager: AppManager instance
         """
         pass
     

@@ -32,9 +32,10 @@ class UserActionsModule(BaseModule):
         
         custom_log("UserActionsModule created with database managers")
 
-    def initialize(self, app):
-        """Initialize the UserActionsModule with Flask app."""
-        self.app = app
+    def initialize(self, app_manager):
+        """Initialize the UserActionsModule with AppManager."""
+        self.app_manager = app_manager
+        self.app = app_manager.flask_app
         self.register_routes()
         self._initialized = True
         custom_log("UserActionsModule initialized")
