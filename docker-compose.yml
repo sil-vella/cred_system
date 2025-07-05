@@ -9,12 +9,10 @@ services:
       - ./python_base_04_k8s:/app
       - ./python_base_04_k8s/tools/logger:/app/tools/logger
     environment:
-      - MONGODB_URI=mongodb://localhost:27017
+      - MONGODB_SERVICE_NAME=localhost
       - REDIS_HOST=localhost
       - REDIS_PORT=6379
       - REDIS_PASSWORD=7cNfJTOcyDxdhK5NZubMoE7KS
-      - MONGODB_HOST=localhost
-      - MONGODB_PORT=27017
       - MONGODB_ROOT_PASSWORD=rootpassword
       - MONGODB_USER=credit_system_user
       - MONGODB_PASSWORD=credit_system_password

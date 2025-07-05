@@ -11,6 +11,9 @@ PF_PID=$!
 sleep 3
 
 echo "🐳 Starting Flask app with Docker Compose..."
+echo "🔄 Stopping any existing containers..."
+docker compose down
+echo "🚀 Starting fresh containers..."
 docker compose up --build
 
 # Cleanup when done

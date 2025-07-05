@@ -150,6 +150,11 @@ class RedisManager:
     def _decrypt_data(self, encrypted_data):
         """Decrypt data retrieved from Redis."""
         try:
+            # Handle None or empty data
+            if not encrypted_data:
+                return None
+                
+            # Try to decrypt the data
             decrypted = self.cipher_suite.decrypt(encrypted_data.encode())
             data = json.loads(decrypted.decode())
             
@@ -161,7 +166,9 @@ class RedisManager:
                 
             return data
         except Exception as e:
-            custom_log(f"Error decrypting data: {str(e)}")
+            # Log the error but don't fail the application
+            custom_log(f"⚠️ Error decrypting data (this is normal for non-encrypted data): {str(e)}")
+            # Return None instead of failing - this allows the application to continue
             return None
 
     def _convert_lists_to_sets(self, data):
@@ -184,7 +191,13 @@ class RedisManager:
             secure_key = self._generate_secure_key(key, *args)
             value = self.redis.get(secure_key)
             if value:
-                return self._decrypt_data(value)
+                decrypted_value = self._decrypt_data(value)
+                if decrypted_value is not None:
+                    return decrypted_value
+                else:
+                    # If decryption failed, try to return the raw value as fallback
+                    custom_log(f"⚠️ Decryption failed for key {secure_key}, returning raw value")
+                    return value
             return None
         except Exception as e:
             custom_log(f"❌ Error getting value from Redis: {e}")
