@@ -237,12 +237,17 @@ class AppManager:
                     
                     # Rate limit exceeded
                     from flask import make_response, jsonify
+                    # Calculate retry_after safely
+                    retry_after = 60  # Default 60 seconds
+                    if result['reset_time']:
+                        retry_after = max(result['reset_time'].values()) - int(time.time())
+                    
                     response = make_response(
                         jsonify({
                             'error': 'Rate limit exceeded',
                             'message': 'Too many requests',
                             'exceeded_types': exceeded_types,
-                            'retry_after': max(result['reset_time'].values()) - int(time.time())
+                            'retry_after': retry_after
                         }),
                         429  # Too Many Requests
                     )
@@ -381,17 +386,23 @@ class AppManager:
             
         @self.flask_app.after_request
         def after_request(response):
-            # Calculate request duration
-            duration = time.time() - request.start_time
-            
-            # Track request metrics
-            metrics_collector.track_request(
-                method=request.method,
-                endpoint=request.endpoint,
-                status=response.status_code,
-                duration=duration,
-                size=request.request_size
-            )
+            try:
+                # Calculate request duration safely
+                if hasattr(request, 'start_time'):
+                    duration = time.time() - request.start_time
+                else:
+                    duration = 0
+                
+                # Track request metrics
+                metrics_collector.track_request(
+                    method=request.method,
+                    endpoint=request.endpoint,
+                    status=response.status_code,
+                    duration=duration,
+                    size=getattr(request, 'request_size', 0)
+                )
+            except Exception as e:
+                custom_log(f"Error in after_request monitoring: {e}", level="ERROR")
             
             return response
             

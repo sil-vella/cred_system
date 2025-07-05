@@ -506,11 +506,18 @@ class DatabaseManager:
             return 0
             
         try:
+            # Try to get server status, but handle permission errors gracefully
             server_status = self.db.command("serverStatus")
             return server_status.get("connections", {}).get("current", 0)
         except Exception as e:
-            custom_log(f"Failed to get connection count: {e}", level="ERROR")
-            return 0
+            # If we don't have permission for serverStatus, just return a default value
+            # This is expected for application users who don't have admin privileges
+            if "not authorized" in str(e).lower():
+                custom_log(f"Application user doesn't have permission for serverStatus command (this is normal)", level="DEBUG")
+                return 0
+            else:
+                custom_log(f"Failed to get connection count: {e}", level="ERROR")
+                return 0
 
     def get_all_database_data(self) -> Dict[str, Any]:
         """Get all data from all collections in the database."""

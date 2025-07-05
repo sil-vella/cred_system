@@ -59,6 +59,8 @@ actions:
     examples:
       - description: "Log login activity"
         request: '{"user_id": "12345", "activity_type": "login", "metadata": {"ip": "192.168.1.1"}}'
+      - description: "Log page view"
+        request: '{"user_id": "12345", "activity_type": "page_view", "metadata": {"page": "/dashboard", "duration": 120}}'
 
   validate_user_permissions:
     description: "Check if user has specific permissions"
@@ -72,6 +74,22 @@ actions:
     examples:
       - description: "Check admin permission"
         request: '{"user_id": "12345", "permission": "admin"}'
+
+  find_users:
+    description: "Find users with filters"
+    type: "database"
+    operation: "find"
+    collection: "users"
+    required_params:
+      - "query"
+    optional_params:
+      - "limit"
+      - "skip"
+    examples:
+      - description: "Find all active users"
+        request: '{"query": {"status": "active"}}'
+      - description: "Find users by email pattern"
+        request: '{"query": {"email": {"$regex": "john", "$options": "i"}}}'
 
 # Global configuration for the module
 config:

@@ -20,7 +20,17 @@ class UserActionsModule(BaseModule):
         # Load actions configuration
         self.actions_config = self._load_actions_config()
         
-        custom_log("UserActionsModule created")
+        # Initialize database managers
+        if app_manager:
+            self.db_manager = app_manager.get_db_manager(role="read_write")
+            self.analytics_db = app_manager.get_db_manager(role="read_only")
+        else:
+            # Fallback for testing
+            from core.managers.database_manager import DatabaseManager
+            self.db_manager = DatabaseManager(role="read_write")
+            self.analytics_db = DatabaseManager(role="read_only")
+        
+        custom_log("UserActionsModule created with database managers")
 
     def initialize(self, app):
         """Initialize the UserActionsModule with Flask app."""
@@ -111,17 +121,67 @@ class UserActionsModule(BaseModule):
 
     def _execute_database_action(self, action_config: Dict, request_data: Dict) -> Any:
         """Execute a database-based action."""
-        # This would integrate with your database manager
-        operation = action_config.get("operation")
-        collection = action_config.get("collection")
-        
-        # For now, return a placeholder
-        return {
-            "operation": operation,
-            "collection": collection,
-            "data": request_data,
-            "status": "database_operation_placeholder"
-        }
+        try:
+            operation = action_config.get("operation")
+            collection = action_config.get("collection")
+            
+            if operation == "insert":
+                # Insert document into collection
+                document_id = self.db_manager.insert(collection, request_data)
+                return {
+                    "operation": operation,
+                    "collection": collection,
+                    "inserted_id": str(document_id),
+                    "status": "inserted"
+                }
+            elif operation == "find":
+                # Find documents in collection
+                query = request_data.get("query", {})
+                documents = self.analytics_db.find(collection, query)
+                return {
+                    "operation": operation,
+                    "collection": collection,
+                    "documents": documents,
+                    "count": len(documents),
+                    "status": "found"
+                }
+            elif operation == "update":
+                # Update documents in collection
+                query = request_data.get("query", {})
+                update_data = request_data.get("update", {})
+                modified_count = self.db_manager.update(collection, query, {"$set": update_data})
+                return {
+                    "operation": operation,
+                    "collection": collection,
+                    "modified_count": modified_count,
+                    "status": "updated"
+                }
+            elif operation == "delete":
+                # Delete documents from collection
+                query = request_data.get("query", {})
+                deleted_count = self.db_manager.delete(collection, query)
+                return {
+                    "operation": operation,
+                    "collection": collection,
+                    "deleted_count": deleted_count,
+                    "status": "deleted"
+                }
+            else:
+                return {
+                    "operation": operation,
+                    "collection": collection,
+                    "error": f"Unknown operation: {operation}",
+                    "status": "error"
+                }
+                
+        except Exception as e:
+            custom_log(f"Error executing database action: {e}")
+            return {
+                "operation": operation,
+                "collection": collection,
+                "error": f"Database error: {str(e)}",
+                "status": "error"
+            }
 
     def _execute_external_api_action(self, action_config: Dict, request_data: Dict) -> Any:
         """Execute an external API action."""
@@ -137,16 +197,56 @@ class UserActionsModule(BaseModule):
         }
 
     def _get_user_profile(self, request_data: Dict) -> Dict:
-        """Example function action: Get user profile."""
-        user_id = request_data.get("user_id")
-        return {
-            "user_id": user_id,
-            "profile": {
-                "username": f"user_{user_id}",
-                "email": f"user_{user_id}@example.com",
-                "preferences": {"theme": "dark", "notifications": True}
+        """Get user profile from database."""
+        try:
+            user_id = request_data.get("user_id")
+            
+            # Convert string user_id to ObjectId if needed
+            from bson import ObjectId
+            if isinstance(user_id, str) and len(user_id) == 24:
+                try:
+                    user_id = ObjectId(user_id)
+                except:
+                    pass  # Keep as string if conversion fails
+            
+            # Query user from database
+            user = self.analytics_db.find_one("users", {"_id": user_id})
+            
+            if not user:
+                return {
+                    "user_id": str(user_id),
+                    "error": "User not found",
+                    "status": "not_found"
+                }
+            
+            # Remove sensitive data
+            user.pop('password', None)
+            
+            # Get user's wallet if available
+            wallet = self.analytics_db.find_one("wallets", {"user_id": str(user.get("_id"))})
+            
+            profile = {
+                "user_id": str(user.get("_id")),
+                "username": user.get("username"),
+                "email": user.get("email"),
+                "status": user.get("status"),
+                "created_at": user.get("created_at"),
+                "wallet": wallet
             }
-        }
+            
+            return {
+                "user_id": str(user_id),
+                "profile": profile,
+                "status": "found"
+            }
+            
+        except Exception as e:
+            custom_log(f"Error getting user profile: {e}")
+            return {
+                "user_id": str(user_id),
+                "error": f"Database error: {str(e)}",
+                "status": "error"
+            }
 
     def _update_user_preferences(self, request_data: Dict) -> Dict:
         """Example function action: Update user preferences."""
