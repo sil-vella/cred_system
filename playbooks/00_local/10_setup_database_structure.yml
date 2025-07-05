@@ -1,24 +1,54 @@
 ---
-- name: Setup MongoDB Database Structure and Dummy Data (Local k3d)
+- name: Setup MongoDB Database Structure and Dummy Data (Local Docker)
   hosts: localhost
   connection: local
   vars:
-    flask_namespace: "flask-app"
-    mongodb_release_name: "mongodb"
+    mongodb_container_name: "credit_system_mongodb"
     database_name: "credit_system"
     app_user: "credit_app_user"
     app_password: "6R3jjsvVhIRP20zMiHdkBzNKx"
     
-    # MongoDB connection details
-    mongodb_host: "{{ mongodb_release_name }}.{{ flask_namespace }}.svc.cluster.local"
+    # MongoDB connection details for Docker
+    mongodb_host: "localhost"
     mongodb_port: "27017"
     mongodb_auth_db: "credit_system"
 
   tasks:
-    - name: Wait for MongoDB to be ready
-      shell: kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=mongodb -n {{ flask_namespace }} --timeout=300s
+    - name: Wait for MongoDB container to be ready
+      shell: docker exec {{ mongodb_container_name }} mongosh --eval "db.adminCommand('ping')" --quiet
       register: mongodb_ready
+      retries: 30
+      delay: 2
+      until: mongodb_ready.rc == 0
       changed_when: mongodb_ready.rc == 0
+
+    - name: Empty database completely
+      shell: |
+        docker exec {{ mongodb_container_name }} mongosh -u {{ app_user }} -p "{{ app_password }}" --authenticationDatabase {{ mongodb_auth_db }} --eval "
+          db = db.getSiblingDB('credit_system');
+          print('🗑️ Emptying database completely...');
+          
+          // Get all collection names
+          var collections = db.getCollectionNames();
+          print('Found ' + collections.length + ' collections to drop');
+          
+          // Drop each collection
+          collections.forEach(function(collectionName) {
+            if (collectionName !== 'system.indexes' && collectionName !== 'system.namespaces') {
+              print('Dropping collection: ' + collectionName);
+              db[collectionName].drop();
+            }
+          });
+          
+          print('✅ Database emptied successfully');
+          print('Remaining collections: ' + db.getCollectionNames().length);
+        "
+      register: empty_db_result
+      changed_when: true
+
+    - name: Display empty database results
+      debug:
+        msg: "{{ empty_db_result.stdout }}"
 
     - name: Create database structure setup script
       copy:
@@ -597,9 +627,14 @@
           print("\n✅ Credit System Database is ready for development!");
         mode: '0644'
 
+    - name: Copy setup script to MongoDB container
+      shell: docker cp /tmp/setup_database.js {{ mongodb_container_name }}:/tmp/setup_database.js
+      register: copy_result
+      changed_when: copy_result.rc == 0
+
     - name: Execute database structure setup
       shell: |
-        kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_release_name }} -- mongosh -u {{ app_user }} -p "{{ app_password }}" --authenticationDatabase {{ mongodb_auth_db }} --eval "$(cat /tmp/setup_database.js)"
+        docker exec {{ mongodb_container_name }} mongosh -u {{ app_user }} -p "{{ app_password }}" --authenticationDatabase {{ mongodb_auth_db }} --eval "$(cat /tmp/setup_database.js)"
       register: db_setup_result
       changed_when: true
 
@@ -609,7 +644,7 @@
 
     - name: Verify database collections
       shell: |
-        kubectl exec -n {{ flask_namespace }} deployment/{{ mongodb_release_name }} -- mongosh -u {{ app_user }} -p "{{ app_password }}" --authenticationDatabase {{ mongodb_auth_db }} --eval "
+        docker exec {{ mongodb_container_name }} mongosh -u {{ app_user }} -p "{{ app_password }}" --authenticationDatabase {{ mongodb_auth_db }} --eval "
           db = db.getSiblingDB('credit_system');
           print('\\n📋 COLLECTION SUMMARY:');
           print('=====================');
@@ -646,6 +681,7 @@
           - audit_logs: Administrative action tracking
           
           🔗 Connection Details:
+          - Container: {{ mongodb_container_name }}
           - Host: {{ mongodb_host }}
           - Port: {{ mongodb_port }}
           - Database: {{ database_name }}

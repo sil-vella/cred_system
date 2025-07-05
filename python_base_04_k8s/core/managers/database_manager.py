@@ -96,7 +96,7 @@ class DatabaseManager:
                             'error': str(e),
                             'completed': True
                         }
-                custom_log(f"❌ Queue worker error: {e}")
+                custom_log(f"❌ Queue worker error: {e}", level="ERROR")
 
     def _execute_queued_operation(self, request: Dict) -> Dict:
         """Execute a queued database operation."""
@@ -124,9 +124,9 @@ class DatabaseManager:
             else:
                 return {'success': False, 'error': f'Unknown operation: {operation}', 'completed': True}
         except Exception as e:
-            custom_log(f"❌ Error in _execute_queued_operation: {e}")
+            custom_log(f"❌ Error in _execute_queued_operation: {e}", level="ERROR")
             import traceback
-            custom_log(f"❌ Traceback: {traceback.format_exc()}")
+            custom_log(f"❌ Traceback: {traceback.format_exc()}", level="ERROR")
             return {'success': False, 'error': str(e), 'completed': True}
 
     def queue_operation(self, operation: str, collection: str, query: Dict = None, data: Dict = None, timeout: int = None) -> Dict:
@@ -290,10 +290,12 @@ class DatabaseManager:
 
     def _convert_objectid_to_string(self, data):
         """Convert ObjectId to string for JSON serialization."""
+        from bson import ObjectId
+        
         if isinstance(data, dict):
             result = {}
             for key, value in data.items():
-                if key == '_id' and hasattr(value, '__str__'):
+                if isinstance(value, ObjectId):
                     result[key] = str(value)
                 else:
                     result[key] = self._convert_objectid_to_string(value)
@@ -303,11 +305,34 @@ class DatabaseManager:
         else:
             return data
 
+    def _convert_string_to_objectid(self, data):
+        """Convert string _id to ObjectId for MongoDB queries."""
+        from bson import ObjectId
+        
+        if isinstance(data, dict):
+            result = {}
+            for key, value in data.items():
+                if key == '_id' and isinstance(value, str):
+                    try:
+                        result[key] = ObjectId(value)
+                    except Exception:
+                        # If conversion fails, keep as string
+                        result[key] = value
+                else:
+                    result[key] = self._convert_string_to_objectid(value)
+            return result
+        elif isinstance(data, list):
+            return [self._convert_string_to_objectid(item) for item in data]
+        else:
+            return data
+
     def _execute_find(self, collection: str, query: Dict[str, Any]) -> list:
         """Execute find operation directly (for queue worker)."""
         if not self.available:
             return []
-        results = list(self.db[collection].find(query))
+        # Convert string _id to ObjectId for MongoDB queries
+        converted_query = self._convert_string_to_objectid(query)
+        results = list(self.db[collection].find(converted_query))
         decrypted_results = [self._decrypt_sensitive_fields(doc) for doc in results]
         return [self._convert_objectid_to_string(doc) for doc in decrypted_results]
 
@@ -315,7 +340,9 @@ class DatabaseManager:
         """Execute find_one operation directly (for queue worker)."""
         if not self.available:
             return None
-        result = self.db[collection].find_one(query)
+        # Convert string _id to ObjectId for MongoDB queries
+        converted_query = self._convert_string_to_objectid(query)
+        result = self.db[collection].find_one(converted_query)
         if result:
             decrypted_result = self._decrypt_sensitive_fields(result)
             return self._convert_objectid_to_string(decrypted_result)
@@ -325,15 +352,19 @@ class DatabaseManager:
         """Execute update operation directly (for queue worker)."""
         if not self.available:
             return 0
+        # Convert string _id to ObjectId for MongoDB queries
+        converted_query = self._convert_string_to_objectid(query)
         encrypted_data = self._encrypt_sensitive_fields(data)
-        result = self.db[collection].update_many(query, {'$set': encrypted_data})
+        result = self.db[collection].update_many(converted_query, {'$set': encrypted_data})
         return result.modified_count
 
     def _execute_delete(self, collection: str, query: Dict[str, Any]) -> int:
         """Execute delete operation directly (for queue worker)."""
         if not self.available:
             return 0
-        result = self.db[collection].delete_many(query)
+        # Convert string _id to ObjectId for MongoDB queries
+        converted_query = self._convert_string_to_objectid(query)
+        result = self.db[collection].delete_many(converted_query)
         return result.deleted_count
 
     def get_queue_status(self) -> Dict[str, Any]:
@@ -362,7 +393,7 @@ class DatabaseManager:
             with open(password_file_path, 'r') as f:
                 return f.read().strip()
         except Exception as e:
-            self.logger.error(f"Failed to read password file: {e}")
+            custom_log(f"Failed to read password file: {e}", level="ERROR")
             raise
 
     def _setup_mongodb_connection(self):
@@ -370,8 +401,8 @@ class DatabaseManager:
         # Use centralized config system for all MongoDB settings
         from utils.config.config import Config
         
-        mongodb_user = Config.MONGODB_ROOT_USER
-        password = Config.MONGODB_ROOT_PASSWORD
+        mongodb_user = Config.MONGODB_USER
+        password = Config.MONGODB_PASSWORD
         mongodb_host = Config.MONGODB_SERVICE_NAME
         mongodb_port = str(Config.MONGODB_PORT)
         mongodb_db = Config.MONGODB_DB_NAME
@@ -384,7 +415,7 @@ class DatabaseManager:
         encoded_password = quote_plus(password)
 
         # Construct MongoDB URI with encoded credentials
-        mongodb_uri = f"mongodb://{encoded_user}:{encoded_password}@{mongodb_host}:{mongodb_port}/{mongodb_db}?authSource=admin"
+        mongodb_uri = f"mongodb://{encoded_user}:{encoded_password}@{mongodb_host}:{mongodb_port}/{mongodb_db}?authSource={mongodb_db}"
 
         # Set up connection options
         options = {
@@ -435,7 +466,7 @@ class DatabaseManager:
                 except Exception as e:
                     # If decryption fails (e.g., data was encrypted with different key),
                     # keep the original data and log the issue
-                    custom_log(f"⚠️ Failed to decrypt field '{field}': {e}")
+                    custom_log(f"⚠️ Failed to decrypt field '{field}': {e}", level="WARNING")
                     # Keep the original value - it might be already decrypted or encrypted with different key
                     decrypted_data[field] = data[field]
         return decrypted_data
@@ -464,7 +495,8 @@ class DatabaseManager:
         try:
             self.client.server_info()
             return True
-        except Exception:
+        except Exception as e:
+            custom_log(f"Database connection check failed: {e}", level="ERROR")
             self.available = False
             return False
 
@@ -476,7 +508,56 @@ class DatabaseManager:
         try:
             server_status = self.db.command("serverStatus")
             return server_status.get("connections", {}).get("current", 0)
-        except Exception:
+        except Exception as e:
+            custom_log(f"Failed to get connection count: {e}", level="ERROR")
             return 0
+
+    def get_all_database_data(self) -> Dict[str, Any]:
+        """Get all data from all collections in the database."""
+        if not self.available:
+            custom_log("⚠️ Database unavailable - cannot retrieve data")
+            return {"error": "Database unavailable"}
+            
+        try:
+            all_data = {}
+            
+            # Get list of all collections
+            collections = self.db.list_collection_names()
+            custom_log(f"📊 Found {len(collections)} collections: {collections}")
+            
+            for collection_name in collections:
+                try:
+                    # Get all documents from the collection
+                    documents = list(self.db[collection_name].find({}))
+                    
+                    # Convert ObjectIds to strings for JSON serialization
+                    converted_documents = []
+                    for doc in documents:
+                        converted_doc = self._convert_objectid_to_string(doc)
+                        # Decrypt sensitive fields if needed
+                        decrypted_doc = self._decrypt_sensitive_fields(converted_doc)
+                        converted_documents.append(decrypted_doc)
+                    
+                    all_data[collection_name] = {
+                        "count": len(converted_documents),
+                        "documents": converted_documents
+                    }
+                    
+                    custom_log(f"📋 Retrieved {len(converted_documents)} documents from collection '{collection_name}'")
+                    
+                except Exception as e:
+                    custom_log(f"❌ Error retrieving data from collection '{collection_name}': {e}", level="ERROR")
+                    all_data[collection_name] = {
+                        "error": str(e),
+                        "count": 0,
+                        "documents": []
+                    }
+            
+            custom_log(f"✅ Successfully retrieved data from {len(collections)} collections")
+            return all_data
+            
+        except Exception as e:
+            custom_log(f"❌ Error retrieving all database data: {e}", level="ERROR")
+            return {"error": f"Failed to retrieve database data: {str(e)}"}
 
 # ... existing code ... 

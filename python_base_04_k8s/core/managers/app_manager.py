@@ -54,7 +54,7 @@ class AppManager:
             # Try to execute a simple query to check connection
             return self.db_manager.check_connection()
         except Exception as e:
-            self.logger.error(f"Database health check failed: {e}")
+            custom_log(f"Database health check failed: {e}", level="ERROR")
             return False
 
     def check_redis_connection(self):
@@ -65,7 +65,7 @@ class AppManager:
             # Try to execute a PING command
             return self.redis_manager.ping()
         except Exception as e:
-            self.logger.error(f"Redis health check failed: {e}")
+            custom_log(f"Redis health check failed: {e}", level="ERROR")
             return False
 
     def get_db_manager(self, role="read_write"):
@@ -317,7 +317,7 @@ class AppManager:
                 status = self.module_manager.get_module_status()
                 return status, 200
             except Exception as e:
-                custom_log(f"Error getting module status: {e}")
+                custom_log(f"Error getting module status: {e}", level="ERROR")
                 return {'error': 'Failed to get module status'}, 500
 
         @self.flask_app.route('/modules/<module_key>/health')
@@ -331,7 +331,7 @@ class AppManager:
                 health = module.health_check()
                 return health, 200
             except Exception as e:
-                custom_log(f"Error getting module health: {e}")
+                custom_log(f"Error getting module health: {e}", level="ERROR")
                 return {'error': 'Failed to get module health'}, 500
 
         custom_log("Module management endpoints registered")
@@ -414,7 +414,7 @@ class AppManager:
                         self.redis_manager.get_connection_count()
                     )
             except Exception as e:
-                self.logger.error(f"Error updating system metrics: {e}")
+                custom_log(f"Error updating system metrics: {e}", level="ERROR")
         
         # Schedule periodic updates
         self.scheduler.add_job(

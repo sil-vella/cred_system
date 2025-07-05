@@ -83,7 +83,7 @@ def sanitize_log_message(message):
     return message
 
 
-def custom_log(message):
+def custom_log(message, level="DEBUG"):
     if CUSTOM_LOGGING_ENABLED:
         message = sanitize_log_message(message)
         # Get the frame of the caller
@@ -95,10 +95,14 @@ def custom_log(message):
                 # Get the caller's file and line number
                 filename = caller_frame.f_code.co_filename
                 line_number = caller_frame.f_lineno
+                
+                # Convert string level to logging level
+                log_level = getattr(logging, level.upper(), logging.DEBUG)
+                
                 # Create a new record with the caller's info
                 record = logging.LogRecord(
                     name='custom_log',
-                    level=logging.DEBUG,
+                    level=log_level,
                     pathname=filename,
                     lineno=line_number,
                     msg=message,

@@ -74,6 +74,7 @@ class ConnectionAPI(BaseModule):
         # Register core routes
         self._register_route_helper("/", self.home, methods=["GET"])
         self._register_route_helper("/auth/refresh", self.refresh_token_endpoint, methods=["POST"])
+        self._register_route_helper("/get-db-data", self.get_all_database_data, methods=["GET"])
         
         custom_log(f"ConnectionAPI registered {len(self.registered_routes)} routes")
 
@@ -105,6 +106,19 @@ class ConnectionAPI(BaseModule):
     def home(self):
         """Handle the root route."""
         return {"message": "ConnectionAPI module is running", "version": "2.0", "module": "connection_api"}
+
+    def get_all_database_data(self):
+        """Get all data from all collections in the database."""
+        try:
+            # Use the database manager to get all data
+            all_data = self.admin_db.get_all_database_data()
+            
+            # Return the data as JSON response
+            return all_data
+            
+        except Exception as e:
+            custom_log(f"❌ Error in get_all_database_data endpoint: {e}", level="ERROR")
+            return {"error": f"Failed to retrieve database data: {str(e)}"}, 500
 
     def get_user_by_email(self, email):
         """Get user by email with proper error handling."""

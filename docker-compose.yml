@@ -1,25 +1,65 @@
 version: '3.8'
 
 services:
+  # MongoDB Service
+  mongodb:
+    image: bitnami/mongodb:7.0
+    container_name: credit_system_mongodb
+    environment:
+      - MONGODB_ROOT_USER=mongodb_admin
+      - MONGODB_ROOT_PASSWORD=MongoAdmin123!@#SecurePass
+      - MONGODB_DATABASE=credit_system
+      - MONGODB_USERNAME=credit_app_user
+      - MONGODB_PASSWORD=6R3jjsvVhIRP20zMiHdkBzNKx
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/bitnami/mongodb
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # Redis Service
+  redis:
+    image: bitnami/redis:7.2
+    container_name: credit_system_redis
+    environment:
+      - REDIS_PASSWORD=7cNfJTOcyDxdhK5NZubMoE7KS
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/bitnami/redis
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # Flask Application
   flask-app:
-    build: ./python_base_04_k8s
+    build:
+      context: ./python_base_04_k8s
+      dockerfile: Dockerfile
+    container_name: credit_system_flask
     ports:
       - "8080:5001"
     volumes:
       - ./python_base_04_k8s:/app
       - ./python_base_04_k8s/tools/logger:/app/tools/logger
+      - ./python_base_04_k8s/secrets:/app/secrets
     environment:
-      - MONGODB_SERVICE_NAME=localhost
-      - REDIS_HOST=localhost
+      - MONGODB_SERVICE_NAME=mongodb
+      - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=7cNfJTOcyDxdhK5NZubMoE7KS
-      - MONGODB_ROOT_PASSWORD=rootpassword
-      - MONGODB_USER=credit_system_user
-      - MONGODB_PASSWORD=credit_system_password
-      - MONGODB_DB_NAME=credit_system
-    restart: unless-stopped
+    depends_on:
+      - mongodb
+      - redis
     networks:
       - app-network
+    restart: unless-stopped
+
+volumes:
+  mongodb_data:
+  redis_data:
 
 networks:
   app-network:

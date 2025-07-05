@@ -5,6 +5,7 @@ import sys
 import os
 from core.metrics import init_metrics
 from utils.config.config import Config
+from tools.logger.custom_logging import custom_log
 
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
@@ -30,6 +31,7 @@ app.config["DEBUG"] = Config.DEBUG
 @app.route('/health')
 def health_check():
     """Health check endpoint for Kubernetes liveness and readiness probes"""
+    custom_log("Health check endpoint called")
     try:
         # Check if the application is properly initialized
         if not app_manager.is_initialized():
