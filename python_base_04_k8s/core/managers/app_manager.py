@@ -106,10 +106,11 @@ class AppManager:
         self.scheduler = BackgroundScheduler()
         self.scheduler.start()
 
-        # Initialize centralized database and Redis managers
+        # Initialize database managers (now using singleton)
         self.db_manager = DatabaseManager(role="read_write")
-        self.analytics_db = DatabaseManager(role="read_only")
-        self.admin_db = DatabaseManager(role="admin")
+        # Use the same instance for all database operations
+        self.analytics_db = self.db_manager
+        self.admin_db = self.db_manager
         self.redis_manager = RedisManager()
         self.rate_limiter_manager = RateLimiterManager()
         self.rate_limiter_manager.set_redis_manager(self.redis_manager)

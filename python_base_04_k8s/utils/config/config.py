@@ -408,7 +408,7 @@ class Config:
     DB_RETRY_DELAY = int(get_file_first_config_value("db_retry_delay", "DB_RETRY_DELAY", "1"))  # Delay between retries in seconds
     
     # Flask-Limiter: Redis backend for rate limiting
-    RATE_LIMIT_ENABLED = get_file_first_config_value("rate_limit_enabled", "RATE_LIMIT_ENABLED", "true").lower() == "true"
+    RATE_LIMIT_ENABLED = get_file_first_config_value("rate_limit_enabled", "RATE_LIMIT_ENABLED", "false").lower() == "true"
     RATE_LIMIT_IP_REQUESTS = int(get_file_first_config_value("rate_limit_ip_requests", "RATE_LIMIT_IP_REQUESTS", "100"))  # Requests per window
     RATE_LIMIT_IP_WINDOW = int(get_file_first_config_value("rate_limit_ip_window", "RATE_LIMIT_IP_WINDOW", "60"))  # Window in seconds
     RATE_LIMIT_IP_PREFIX = get_file_first_config_value("rate_limit_ip_prefix", "RATE_LIMIT_IP_PREFIX", "rate_limit:ip")

@@ -23,8 +23,21 @@ def read_secret_file(path: str) -> Optional[str]:
         return None
 
 class DatabaseManager:
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls, role: str = "read_write"):
+        """Singleton pattern - return existing instance if it exists."""
+        if cls._instance is None:
+            cls._instance = super(DatabaseManager, cls).__new__(cls)
+        return cls._instance
+    
     def __init__(self, role: str = "read_write"):
         """Initialize the database manager with role-based access control and queueing system."""
+        # If already initialized, just return
+        if self._initialized:
+            return
+            
         self.encryption_manager = EncryptionManager()
         self.role = role
         self.client = None
@@ -55,6 +68,9 @@ class DatabaseManager:
         
         # Start queue worker
         self._start_queue_worker()
+        
+        # Mark as initialized
+        self._initialized = True
 
     def _start_queue_worker(self):
         """Start background worker to process database requests."""
@@ -342,10 +358,27 @@ class DatabaseManager:
             return None
         # Convert string _id to ObjectId for MongoDB queries
         converted_query = self._convert_string_to_objectid(query)
+        custom_log(f"[DEBUG] _execute_find_one - Collection: {collection}, Original query: {query}, Converted query: {converted_query}")
+        custom_log(f"[DEBUG] _execute_find_one - Database: {self.db.name}, Collection: {collection}")
+        custom_log(f"[DEBUG] _execute_find_one - Available collections: {list(self.db.list_collection_names())}")
+        
+        # Check if collection exists and has documents
+        collection_obj = self.db[collection]
+        doc_count = collection_obj.count_documents({})
+        custom_log(f"[DEBUG] _execute_find_one - Collection {collection} has {doc_count} documents")
+        
+        # Test query to see what emails are in the database
+        if collection == "users":
+            all_users = list(collection_obj.find({}, {"email": 1}))
+            custom_log(f"[DEBUG] _execute_find_one - All user emails: {[user.get('email') for user in all_users]}")
+        
         result = self.db[collection].find_one(converted_query)
+        custom_log(f"[DEBUG] _execute_find_one - Result found: {result is not None}")
         if result:
             decrypted_result = self._decrypt_sensitive_fields(result)
-            return self._convert_objectid_to_string(decrypted_result)
+            final_result = self._convert_objectid_to_string(decrypted_result)
+            custom_log(f"[DEBUG] _execute_find_one - Final result: {final_result.get('email') if final_result else None}")
+            return final_result
         return None
 
     def _execute_update(self, collection: str, query: Dict[str, Any], data: Dict[str, Any]) -> int:

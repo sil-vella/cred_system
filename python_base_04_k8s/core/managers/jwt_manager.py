@@ -47,6 +47,9 @@ class JWTManager:
                 expire = datetime.utcnow() + timedelta(seconds=self.access_token_expire_seconds)
             elif token_type == TokenType.REFRESH:
                 expire = datetime.utcnow() + timedelta(seconds=self.refresh_token_expire_seconds)
+            else:
+                # Default to access token expiration for unknown token types
+                expire = datetime.utcnow() + timedelta(seconds=self.access_token_expire_seconds)
         
         # Add client fingerprint for token binding
         client_fingerprint = self._get_client_fingerprint()
