@@ -564,10 +564,9 @@ class RedisManager:
             if not self._ensure_connection():
                 return False
 
-            # Store token with expiration
+            # Store token with expiration using direct Redis operations
             token_key = self._generate_token_key(token_type, token)
-            if not self.set(token_key, "1", expire=expire):
-                return False
+            self.redis.setex(token_key, expire, "1")
 
             # Add to token set
             set_key = self._generate_token_set_key(token_type)
@@ -588,7 +587,7 @@ class RedisManager:
                 return False
 
             token_key = self._generate_token_key(token_type, token)
-            return self.exists(token_key)
+            return self.redis.exists(token_key)
         except Exception as e:
             custom_log(f"❌ Error checking token validity: {e}")
             return False
@@ -599,9 +598,9 @@ class RedisManager:
             if not self._ensure_connection():
                 return False
 
-            # Remove token
+            # Remove token using direct Redis operations
             token_key = self._generate_token_key(token_type, token)
-            self.delete(token_key)
+            self.redis.delete(token_key)
 
             # Remove from set
             set_key = self._generate_token_set_key(token_type)
@@ -623,7 +622,7 @@ class RedisManager:
 
             for token in tokens:
                 token_key = self._generate_token_key(token_type, token)
-                if not self.exists(token_key):
+                if not self.redis.exists(token_key):
                     # Token has expired, remove from set
                     self.redis.srem(set_key, token)
                     custom_log(f"Cleaned up expired {token_type} token")
@@ -640,7 +639,7 @@ class RedisManager:
                 return -1
 
             token_key = self._generate_token_key(token_type, token)
-            return self.ttl(token_key)
+            return self.redis.ttl(token_key)
         except Exception as e:
             custom_log(f"❌ Error getting token TTL: {e}")
             return -1
@@ -652,7 +651,7 @@ class RedisManager:
                 return False
 
             token_key = self._generate_token_key(token_type, token)
-            return self.expire(token_key, seconds)
+            return self.redis.expire(token_key, seconds)
         except Exception as e:
             custom_log(f"❌ Error extending token TTL: {e}")
             return False

@@ -456,7 +456,7 @@ class UserManagementModule(BaseModule):
             jwt_manager = self.app_manager.jwt_manager
             
             # Verify token
-            payload = jwt_manager.verify_token(token, 'access')
+            payload = jwt_manager.verify_token(token, TokenType.ACCESS)
             if not payload:
                 return jsonify({
                     "success": False,
@@ -502,7 +502,7 @@ class UserManagementModule(BaseModule):
             jwt_manager = self.app_manager.jwt_manager
             
             # Verify refresh token
-            payload = jwt_manager.verify_token(refresh_token, 'refresh')
+            payload = jwt_manager.verify_token(refresh_token, TokenType.REFRESH)
             if not payload:
                 return jsonify({
                     "success": False,
@@ -569,7 +569,7 @@ class UserManagementModule(BaseModule):
             jwt_manager = self.app_manager.jwt_manager
             
             # Verify token
-            payload = jwt_manager.verify_token(token, 'access')
+            payload = jwt_manager.verify_token(token, TokenType.ACCESS)
             if not payload:
                 return jsonify({
                     "success": False,

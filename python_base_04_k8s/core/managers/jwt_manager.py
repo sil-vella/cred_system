@@ -27,9 +27,14 @@ class JWTManager:
     def _get_client_fingerprint(self) -> str:
         """Generate a unique client fingerprint based on IP and User-Agent."""
         try:
-            ip = request.remote_addr
+            # Handle Docker environment - try to get real client IP
+            ip = request.headers.get('X-Forwarded-For', request.headers.get('X-Real-IP', request.remote_addr))
+            # If it's a comma-separated list, take the first one
+            if ip and ',' in ip:
+                ip = ip.split(',')[0].strip()
             user_agent = request.headers.get('User-Agent', '')
             fingerprint = hashlib.sha256(f"{ip}-{user_agent}".encode()).hexdigest()
+            custom_log(f"Generated fingerprint: {fingerprint[:16]}... for IP: {ip}")
             return fingerprint
         except Exception as e:
             custom_log(f"Error generating client fingerprint: {str(e)}")
@@ -83,6 +88,14 @@ class JWTManager:
             if self._is_token_revoked(token):
                 custom_log(f"Token revoked: {token[:10]}...")
                 return None
+                
+            # Verify fingerprint if present in token
+            token_fingerprint = payload.get("fingerprint")
+            if token_fingerprint:
+                current_fingerprint = self._get_client_fingerprint()
+                if current_fingerprint and token_fingerprint != current_fingerprint:
+                    custom_log(f"Fingerprint mismatch. Token: {token_fingerprint[:16]}..., Current: {current_fingerprint[:16]}...")
+                    return None
                 
             # Verify token type if specified
             if expected_type:
