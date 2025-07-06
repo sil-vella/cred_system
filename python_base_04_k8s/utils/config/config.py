@@ -197,7 +197,9 @@ def validate_critical_config():
         ("mongodb_root_password", "MONGODB_ROOT_PASSWORD", "Database authentication"),
         ("jwt_secret_key", "JWT_SECRET_KEY", "JWT token security"),
         ("encryption_key", "ENCRYPTION_KEY", "Data encryption"),
-        ("redis_password", "REDIS_PASSWORD", "Redis authentication")
+        ("redis_password", "REDIS_PASSWORD", "Redis authentication"),
+        ("stripe_secret_key", "STRIPE_SECRET_KEY", "Stripe payment processing"),
+        ("stripe_webhook_secret", "STRIPE_WEBHOOK_SECRET", "Stripe webhook security")
     ]
     
     for file_name, var_name, description in critical_configs:
@@ -251,7 +253,7 @@ def get_vault_status():
             "reason": f"Error getting vault status: {e}"
         }
 
-def get_security_status(mongodb_password=None, jwt_secret=None, redis_password=None):
+def get_security_status(mongodb_password=None, jwt_secret=None, redis_password=None, stripe_secret=None, stripe_webhook_secret=None):
     """Get current security configuration status."""
     vault_status = get_vault_status()
     
@@ -269,12 +271,18 @@ def get_security_status(mongodb_password=None, jwt_secret=None, redis_password=N
         jwt_secret = get_sensitive_config_value("flask-app/app", "secret_key", "jwt_secret_key", "JWT_SECRET_KEY", "your-super-secret-key-change-in-production")
     if redis_password is None:
         redis_password = get_sensitive_config_value("flask-app/redis", "password", "redis_password", "REDIS_PASSWORD", "")
+    if stripe_secret is None:
+        stripe_secret = get_sensitive_config_value("flask-app/stripe", "secret_key", "stripe_secret_key", "STRIPE_SECRET_KEY", "")
+    if stripe_webhook_secret is None:
+        stripe_webhook_secret = get_sensitive_config_value("flask-app/stripe", "webhook_secret", "stripe_webhook_secret", "STRIPE_WEBHOOK_SECRET", "")
     
     # Check source of critical values
     critical_configs = [
         ("mongodb_password", mongodb_password, "mongodb_root_password"),
         ("jwt_secret", jwt_secret, "jwt_secret_key"),
-        ("redis_password", redis_password, "redis_password")
+        ("redis_password", redis_password, "redis_password"),
+        ("stripe_secret", stripe_secret, "stripe_secret_key"),
+        ("stripe_webhook_secret", stripe_webhook_secret, "stripe_webhook_secret")
     ]
     
     vault_secured = 0
@@ -364,6 +372,12 @@ class Config:
     # External Credit System Configuration
     CREDIT_SYSTEM_URL = get_file_first_config_value("credit_system_url", "CREDIT_SYSTEM_URL", "http://localhost:8000")
     CREDIT_SYSTEM_API_KEY = get_sensitive_config_value("flask-app/external", "credit_system_api_key", "credit_system_api_key", "CREDIT_SYSTEM_API_KEY", "test_api_key")
+
+    # Stripe Configuration (Sensitive - Vault priority)
+    STRIPE_SECRET_KEY = get_sensitive_config_value("flask-app/stripe", "secret_key", "stripe_secret_key", "STRIPE_SECRET_KEY", "")
+    STRIPE_PUBLISHABLE_KEY = get_sensitive_config_value("flask-app/stripe", "publishable_key", "stripe_publishable_key", "STRIPE_PUBLISHABLE_KEY", "")
+    STRIPE_WEBHOOK_SECRET = get_sensitive_config_value("flask-app/stripe", "webhook_secret", "stripe_webhook_secret", "STRIPE_WEBHOOK_SECRET", "")
+    STRIPE_API_VERSION = get_file_first_config_value("stripe_api_version", "STRIPE_API_VERSION", "2023-10-16")
 
     # JWT Configuration
     JWT_SECRET_KEY = get_sensitive_config_value("flask-app/app", "secret_key", "jwt_secret_key", "JWT_SECRET_KEY", "your-super-secret-key-change-in-production")
@@ -533,6 +547,14 @@ class Config:
                 cls.FLASK_ENV = app_secrets.get('environment', cls.FLASK_ENV)
                 cls.DEBUG = app_secrets.get('debug', str(cls.DEBUG)).lower() in ('true', '1')
                 logger.info("✅ Flask app config refreshed from Vault")
+            
+            # Refresh Stripe config
+            stripe_secrets = vault.get_stripe_secrets()
+            if stripe_secrets:
+                cls.STRIPE_SECRET_KEY = stripe_secrets.get('secret_key', cls.STRIPE_SECRET_KEY)
+                cls.STRIPE_PUBLISHABLE_KEY = stripe_secrets.get('publishable_key', cls.STRIPE_PUBLISHABLE_KEY)
+                cls.STRIPE_WEBHOOK_SECRET = stripe_secrets.get('webhook_secret', cls.STRIPE_WEBHOOK_SECRET)
+                logger.info("✅ Stripe config refreshed from Vault")
             
             return True
             

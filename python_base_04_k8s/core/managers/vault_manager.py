@@ -223,6 +223,12 @@ class VaultManager:
             return None
         return self.get_secret('flask-app/app')
     
+    def get_stripe_secrets(self) -> Optional[Dict[str, Any]]:
+        """Get Stripe secrets from Vault."""
+        if not self.available:
+            return None
+        return self.get_secret('flask-app/stripe')
+    
     def get_monitoring_secrets(self) -> Optional[Dict[str, Any]]:
         """Get monitoring secrets from Vault."""
         if not self.available:

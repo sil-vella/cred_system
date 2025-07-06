@@ -362,7 +362,8 @@ class AppManager:
             '/auth/register',
             '/auth/refresh',
             '/modules/status',
-            '/get-db-data'  # Temporarily public for testing
+            '/get-db-data',  # Temporarily public for testing
+            '/stripe/webhook'  # Stripe webhooks need to be public
         ]
         
         # Define route patterns for dynamic routes (like /modules/<module_key>/health)

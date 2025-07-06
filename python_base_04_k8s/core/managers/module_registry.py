@@ -86,7 +86,8 @@ class ModuleRegistry:
             "user_management": ["connection_api"],  # Needs API infrastructure
             "user_actions": ["user_management"],  # Needs user management
             "wallet": ["connection_api", "user_management"],  # Needs API and users
-            "transactions": ["connection_api", "user_management", "wallet"],  # Needs all above
+            "transactions": ["connection_api", "user_management", "wallet"],  # Needs API, users, and wallet
+            "stripe": ["connection_api", "user_management", "transactions"],  # Needs API, users, and transactions
         }
         
         custom_log(f"Module dependencies defined: {dependencies}")
@@ -123,9 +124,16 @@ class ModuleRegistry:
                 "health_check_enabled": True,
                 "cache_enabled": True,
             },
+            "stripe": {
+                "enabled": True,
+                "priority": 5,
+                "health_check_enabled": True,
+                "webhook_enabled": True,
+                "secure_processing": True,
+            },
             "transactions": {
                 "enabled": True,
-                "priority": 5,  
+                "priority": 6,  
                 "health_check_enabled": True,
                 "async_processing": False,
             },
