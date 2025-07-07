@@ -315,7 +315,7 @@
             {
               "_id": ObjectId("507f1f77bcf86cd799439041"),
               "user_id": ObjectId("507f1f77bcf86cd799439011"),
-              "provider": "stripe",
+              "provider": "external_app",
               "amount_usd": 9.99,
               "status": "completed",
               "credits_awarded": 1000,
@@ -325,7 +325,7 @@
             {
               "_id": ObjectId("507f1f77bcf86cd799439042"),
               "user_id": ObjectId("507f1f77bcf86cd799439011"),
-              "provider": "stripe",
+              "provider": "external_app",
               "amount_usd": 6.99,
               "status": "completed",
               "credits_awarded": 700,
@@ -355,7 +355,7 @@
             {
               "_id": ObjectId("507f1f77bcf86cd799439045"),
               "user_id": ObjectId("507f1f77bcf86cd799439013"),
-              "provider": "stripe",
+              "provider": "external_app",
               "amount_usd": 19.99,
               "status": "completed",
               "credits_awarded": 2000,
@@ -385,7 +385,7 @@
             {
               "_id": ObjectId("507f1f77bcf86cd799439048"),
               "user_id": ObjectId("507f1f77bcf86cd799439015"),
-              "provider": "stripe",
+              "provider": "external_app",
               "amount_usd": 29.99,
               "status": "completed",
               "credits_awarded": 3000,
@@ -422,13 +422,13 @@
           db.payment_providers.insertMany([
             {
               "_id": ObjectId("507f1f77bcf86cd799439051"),
-              "provider": "stripe",
+              "provider": "external_app",
               "user_id": ObjectId("507f1f77bcf86cd799439011"),
-              "purchase_token": "pi_3OqK8v2eZvKYlo2C1gFJqXqE",
+              "purchase_token": "ext_purchase_token_001",
               "linked_purchase_id": ObjectId("507f1f77bcf86cd799439041"),
               "status": "validated",
               "raw_response": {
-                "id": "pi_3OqK8v2eZvKYlo2C1gFJqXqE",
+                "app_id": "game1",
                 "amount": 999,
                 "currency": "usd",
                 "status": "succeeded"
@@ -437,13 +437,13 @@
             },
             {
               "_id": ObjectId("507f1f77bcf86cd799439052"),
-              "provider": "stripe",
+              "provider": "external_app",
               "user_id": ObjectId("507f1f77bcf86cd799439011"),
-              "purchase_token": "pi_3OqK8v2eZvKYlo2C1gFJqXqF",
+              "purchase_token": "ext_purchase_token_002",
               "linked_purchase_id": ObjectId("507f1f77bcf86cd799439042"),
               "status": "validated",
               "raw_response": {
-                "id": "pi_3OqK8v2eZvKYlo2C1gFJqXqF",
+                "app_id": "game1",
                 "amount": 699,
                 "currency": "usd",
                 "status": "succeeded"
@@ -480,13 +480,13 @@
             },
             {
               "_id": ObjectId("507f1f77bcf86cd799439055"),
-              "provider": "stripe",
+              "provider": "external_app",
               "user_id": ObjectId("507f1f77bcf86cd799439013"),
-              "purchase_token": "pi_3OqK8v2eZvKYlo2C1gFJqXqG",
+              "purchase_token": "ext_purchase_token_003",
               "linked_purchase_id": ObjectId("507f1f77bcf86cd799439045"),
               "status": "validated",
               "raw_response": {
-                "id": "pi_3OqK8v2eZvKYlo2C1gFJqXqG",
+                "app_id": "game2",
                 "amount": 1999,
                 "currency": "usd",
                 "status": "succeeded"
@@ -523,13 +523,13 @@
             },
             {
               "_id": ObjectId("507f1f77bcf86cd799439058"),
-              "provider": "stripe",
+              "provider": "external_app",
               "user_id": ObjectId("507f1f77bcf86cd799439015"),
-              "purchase_token": "pi_3OqK8v2eZvKYlo2C1gFJqXqH",
+              "purchase_token": "ext_purchase_token_004",
               "linked_purchase_id": ObjectId("507f1f77bcf86cd799439048"),
               "status": "validated",
               "raw_response": {
-                "id": "pi_3OqK8v2eZvKYlo2C1gFJqXqH",
+                "app_id": "game3",
                 "amount": 2999,
                 "currency": "usd",
                 "status": "succeeded"
