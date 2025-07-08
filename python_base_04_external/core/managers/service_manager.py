@@ -1,4 +1,5 @@
 from tools.logger.custom_logging import custom_log, function_log, game_play_log, log_function_call
+from utils.config.config import Config
 
 class ServicesManager:
     def __init__(self):
@@ -73,3 +74,23 @@ class ServicesManager:
         
         self.services.clear()
         custom_log("All services have been disposed of.")
+
+    def get_credit_system_url(self):
+        """Get the credit system URL from configuration."""
+        return Config.CREDIT_SYSTEM_URL
+
+    def get_credit_system_api_key(self):
+        """Get the credit system API key from configuration."""
+        try:
+            # Try to load from secrets file
+            import os
+            secret_file = "/app/secrets/CRED_SYS_api_key"
+            if os.path.exists(secret_file):
+                with open(secret_file, 'r') as f:
+                    return f.read().strip()
+            else:
+                # Fallback to config
+                return getattr(Config, 'CREDIT_SYSTEM_API_KEY', None)
+        except Exception as e:
+            custom_log(f"❌ Error getting credit system API key: {e}", level="ERROR")
+            return None

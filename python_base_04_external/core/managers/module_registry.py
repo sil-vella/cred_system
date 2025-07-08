@@ -87,7 +87,7 @@ class ModuleRegistry:
         dependencies = {
             "communications": [],  # Core API - no dependencies
             "user_management": ["communications"],  # Needs API infrastructure
-            "user_actions": ["user_management"],  # Needs user management
+            "system_actions": ["communications"],  # Needs API infrastructure
             "wallet": ["communications", "user_management"],  # Needs API and users
             "transactions": ["communications", "user_management", "wallet"],  # Needs API, users, and wallet
             "stripe": ["communications", "user_management"],  # Needs API and users
@@ -115,27 +115,28 @@ class ModuleRegistry:
                 "health_check_enabled": True,
                 "session_timeout": 3600,
             },
-            "user_actions": {
+
+            "system_actions": {
                 "enabled": True,
-                "priority": 3,
+                "priority": 4,
                 "health_check_enabled": True,
-                "declarative_actions": True,
+                "user_actions_manager": True,
             },
             "wallet": {
                 "enabled": True,
-                "priority": 4,
+                "priority": 5,
                 "health_check_enabled": True,
                 "cache_enabled": True,
             },
             "transactions": {
                 "enabled": True,
-                "priority": 5,  
+                "priority": 6,  
                 "health_check_enabled": True,
                 "async_processing": False,
             },
             "stripe": {
                 "enabled": True,
-                "priority": 6,
+                "priority": 7,
                 "health_check_enabled": True,
                 "payment_processing": True,
             },

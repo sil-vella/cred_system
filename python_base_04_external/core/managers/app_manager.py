@@ -17,6 +17,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from core.managers.database_manager import DatabaseManager
 from core.managers.redis_manager import RedisManager
 from core.managers.state_manager import StateManager
+from core.managers.user_actions_manager import UserActionsManager
+from core.managers.action_discovery_manager import ActionDiscoveryManager
 
 
 class AppManager:
@@ -39,6 +41,8 @@ class AppManager:
         self.rate_limiter_manager = None
         self.state_manager = None
         self.jwt_manager = None
+        self.user_actions_manager = None
+        self.action_discovery_manager = None
         self._initialized = False
 
         custom_log("AppManager instance created.")
@@ -119,7 +123,14 @@ class AppManager:
         # Initialize JWT manager
         from core.managers.jwt_manager import JWTManager
         self.jwt_manager = JWTManager(redis_manager=self.redis_manager)
-        custom_log("✅ Centralized database, Redis, State, and JWT managers initialized")
+        
+        # Initialize UserActionsManager
+        self.user_actions_manager = UserActionsManager()
+        
+        # Initialize ActionDiscoveryManager
+        self.action_discovery_manager = ActionDiscoveryManager(self)
+        self.action_discovery_manager.discover_all_actions()
+        custom_log("✅ Centralized database, Redis, State, JWT, UserActions, and ActionDiscovery managers initialized")
 
         # Initialize services
         self.services_manager.initialize_services()
@@ -363,7 +374,8 @@ class AppManager:
         public_routes = [
             '/health',
             '/modules/status',
-            '/api-keys/request-from-credit-system'  # Allow requesting API keys without auth
+            '/api-keys/request-from-credit-system',  # Allow requesting API keys without auth
+            '/actions'  # Internal actions route (no auth required)
         ]
         
         # Define routes that should skip API key validation and just forward to credit system
@@ -375,6 +387,7 @@ class AppManager:
         # Define route patterns for dynamic routes (like /modules/<module_key>/health)
         public_patterns = [
             r'^/modules/.*/health$',  # Module health endpoints
+            r'^/actions/.*$',  # All /actions/* routes (internal actions)
         ]
         
         # Define forward route patterns for user management
