@@ -50,14 +50,18 @@ class UserManagementModule(BaseModule):
 
     def register_routes(self):
         """Register wildcard routes that capture all user-related requests."""
-        # Only 2 wildcard routes that capture everything
+        # Base routes for when no subpath is provided
+        self._register_route_helper("/users", self.forward_user_request, methods=["GET", "POST", "PUT", "DELETE"])
+        self._register_route_helper("/auth/users", self.forward_user_request, methods=["GET", "POST", "PUT", "DELETE"])
+        
+        # Wildcard routes for subpaths
         self._register_route_helper("/users/<path:subpath>", self.forward_user_request, methods=["GET", "POST", "PUT", "DELETE"])
         self._register_route_helper("/auth/users/<path:subpath>", self.forward_user_request, methods=["GET", "POST", "PUT", "DELETE"])
         
         # Test endpoint for debugging
         self._register_route_helper("/auth/test", self.test_debug, methods=["GET"])
         
-        custom_log(f"UserManagementModule registered 2 wildcard routes for user forwarding")
+        custom_log(f"UserManagementModule registered 4 routes for user forwarding")
 
     def forward_user_request(self, subpath=None):
         """Forward user management requests to credit system with API key."""
@@ -67,9 +71,19 @@ class UserManagementModule(BaseModule):
             method = request.method
             
             # Build the target path on credit system
-            # If it's /users/search, forward to /users/search
-            # If it's /auth/users/login, forward to /auth/login
-            target_path = self._build_credit_system_path(path)
+            # Use subpath parameter when available (for wildcard routes), otherwise use full path
+            if subpath is not None:
+                # For wildcard routes like /users/<path:subpath>
+                # Reconstruct the full path to determine the target
+                if path.startswith('/users/'):
+                    target_path = f"/users/{subpath}"
+                elif path.startswith('/auth/users/'):
+                    target_path = f"/auth/{subpath}"
+                else:
+                    target_path = path  # Fallback
+            else:
+                # For base routes like /users (no subpath)
+                target_path = self._build_credit_system_path(path)
             
             # Prepare headers with API key
             headers = {
@@ -93,6 +107,7 @@ class UserManagementModule(BaseModule):
             custom_log(f"🔄 Forwarding {method} request to credit system: {target_url}")
             custom_log(f"🔄 Original path: {path}")
             custom_log(f"🔄 Target path: {target_path}")
+            custom_log(f"🔄 Subpath parameter: {subpath}")
             custom_log(f"🔄 Headers: {headers}")
             if data:
                 custom_log(f"🔄 Data: {data}")
@@ -135,18 +150,19 @@ class UserManagementModule(BaseModule):
         # Remove leading slash and split path
         path_parts = external_path.strip('/').split('/')
         
-        if len(path_parts) < 2:
+        if len(path_parts) < 1:
             return external_path  # Return as-is if invalid path
         
         # Handle /users/* paths
         if path_parts[0] == 'users':
-            # Forward /users/search to /users/search
+            # Forward /users to /users (let credit system handle it)
+            # Forward /users/create to /users/create
             # Forward /users/123 to /users/123
             # Forward /users/123/profile to /users/123/profile
             return f"/{'/'.join(path_parts)}"
         
         # Handle /auth/users/* paths
-        elif path_parts[0] == 'auth' and path_parts[1] == 'users':
+        elif path_parts[0] == 'auth' and len(path_parts) > 1 and path_parts[1] == 'users':
             # Forward /auth/users/login to /auth/login
             # Forward /auth/users/logout to /auth/logout
             # Forward /auth/users/123 to /auth/123

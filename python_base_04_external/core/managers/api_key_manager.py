@@ -18,9 +18,9 @@ class APIKeyManager:
         self.secrets_dir = "/app/secrets"
         self.credit_system_url = Config.CREDIT_SYSTEM_URL
         
-        # External app configuration
-        self.app_id = "external_app_001"
-        self.app_name = "External Application"
+        # External app configuration - now from config
+        self.app_id = Config.APP_ID
+        self.app_name = Config.APP_NAME
         
         # Standardized Redis key patterns
         self.KEY_PATTERNS = {
@@ -480,18 +480,18 @@ class APIKeyManager:
     def health_check(self) -> Dict[str, Any]:
         """Perform comprehensive health check for unified API Key Manager."""
         try:
-        health_status = {
+            health_status = {
                 'module': 'unified_api_key_manager',
-            'status': 'healthy',
+                'status': 'healthy',
                 'capabilities': {
                     'generation': True,
                     'validation': True,
                     'storage': True,
                     'cache_management': True
                 },
-            'details': {}
-        }
-        
+                'details': {}
+            }
+            
             # Test connection to credit system
             try:
                 response = requests.get(

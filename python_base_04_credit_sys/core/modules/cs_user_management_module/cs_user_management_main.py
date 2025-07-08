@@ -45,7 +45,7 @@ class CSUserManagementModule(BaseModule):
         """Register user management routes."""
         # User CRUD operations
         # User CRUD operations
-        self._register_route_helper("/users", self.create_user, methods=["POST"])
+        self._register_route_helper("/users/create", self.create_user, methods=["POST"])
         self._register_route_helper("/users/<user_id>", self.get_user, methods=["GET"])
         self._register_route_helper("/users/search", self.search_users, methods=["POST"])
         
@@ -88,22 +88,76 @@ class CSUserManagementModule(BaseModule):
             if not all([email, username, password]):
                 return jsonify({'error': 'email, username, and password are required'}), 400
             
-            # Check if user already exists
-            existing_user = self.analytics_db.find_one("users", {"email": email})
+            # Check if user already exists using queue system
+            existing_user = self.db_manager.find_one("users", {"email": email})
             if existing_user:
                 return jsonify({'error': 'User with this email already exists'}), 409
             
             # Hash password
             hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
             
-            # Prepare user data
+            # Get current timestamp for consistent date formatting
+            current_time = datetime.utcnow()
+            
+            # Prepare user data with modular structure
             user_data = {
+                # Core fields
                 'email': email,
                 'username': username,
                 'password': hashed_password.decode('utf-8'),
-                'created_at': datetime.utcnow().isoformat(),
-                'updated_at': datetime.utcnow().isoformat(),
-                'status': 'active'
+                'status': 'active',
+                'created_at': current_time,
+                'updated_at': current_time,
+                
+                # Profile section
+                'profile': {
+                    'first_name': data.get('first_name', ''),
+                    'last_name': data.get('last_name', ''),
+                    'phone': data.get('phone', ''),
+                    'timezone': data.get('timezone', 'UTC'),
+                    'language': data.get('language', 'en')
+                },
+                
+                # Preferences section
+                'preferences': {
+                    'notifications': {
+                        'email': data.get('notifications_email', True),
+                        'sms': data.get('notifications_sms', False),
+                        'push': data.get('notifications_push', True)
+                    },
+                    'privacy': {
+                        'profile_visible': data.get('profile_visible', True),
+                        'activity_visible': data.get('activity_visible', False)
+                    }
+                },
+                
+                # Modules section with default configurations
+                'modules': {
+                    'wallet': {
+                        'enabled': True,
+                        'balance': 0,
+                        'currency': 'credits',
+                        'last_updated': current_time
+                    },
+                    'subscription': {
+                        'enabled': False,
+                        'plan': None,
+                        'expires_at': None
+                    },
+                    'referrals': {
+                        'enabled': True,
+                        'referral_code': f"{username.upper()}{current_time.strftime('%Y%m')}",
+                        'referrals_count': 0
+                    }
+                },
+                
+                # Audit section
+                'audit': {
+                    'last_login': None,
+                    'login_count': 0,
+                    'password_changed_at': current_time,
+                    'profile_updated_at': current_time
+                }
             }
             
             # Insert user using queue system
@@ -114,9 +168,12 @@ class CSUserManagementModule(BaseModule):
                 user_data.pop('password', None)
                 user_data['_id'] = user_id
                 
+                # Convert datetime objects to ISO format for JSON response
+                response_data = self._prepare_user_response(user_data)
+                
                 return jsonify({
                     'message': 'User created successfully',
-                    'user': user_data,
+                    'user': response_data,
                     'status': 'created'
                 }), 201
             else:
@@ -341,22 +398,14 @@ class CSUserManagementModule(BaseModule):
             email = data.get("email")
             password = data.get("password")
             
-            # Find user by email - use queue system
+            # Find user by email using direct query (more efficient)
             custom_log(f"[DEBUG] Login attempt for {email}")
             custom_log(f"[DEBUG] Using db_manager: {self.db_manager}")
             custom_log(f"[DEBUG] Database available: {self.db_manager.available}")
             
-            # Since email is a sensitive field (encrypted), we need to search differently
-            # Get all users and decrypt their emails to find a match
-            all_users = self.db_manager.find("users", {})
-            custom_log(f"[DEBUG] Found {len(all_users)} users in database")
-            
-            user = None
-            for u in all_users:
-                if u.get('email') == email:
-                    user = u
-                    custom_log(f"[DEBUG] Found user with matching email: {email}")
-                    break
+            # Use direct email query instead of fetching all users
+            user = self.db_manager.find_one("users", {"email": email})
+            custom_log(f"[DEBUG] User lookup result: {'Found' if user else 'Not found'}")
             
             if not user:
                 custom_log(f"[DEBUG] No user found for email: {email}")
@@ -374,21 +423,21 @@ class CSUserManagementModule(BaseModule):
             
             # Verify password
             stored_password = user.get("password", "")
-            print(f"[DEBUG] Provided password: {password}")
-            print(f"[DEBUG] Stored hash: {stored_password}")
+            custom_log(f"[DEBUG] Password verification for user: {user.get('username')}")
             try:
                 check_result = bcrypt.checkpw(password.encode('utf-8'), stored_password.encode('utf-8'))
             except Exception as e:
-                print(f"[DEBUG] bcrypt.checkpw error: {e}")
+                custom_log(f"[DEBUG] bcrypt.checkpw error: {e}")
                 check_result = False
-            print(f"[DEBUG] bcrypt.checkpw result: {check_result}")
+            
             if not check_result:
+                custom_log(f"[DEBUG] Password verification failed for user: {user.get('username')}")
                 return jsonify({
                     "success": False,
                     "error": "Invalid email or password"
                 }), 401
             
-            # Update last login and login count
+            # Update last login and login count using queue system
             update_data = {
                 "last_login": datetime.utcnow().isoformat(),
                 "login_count": user.get("login_count", 0) + 1,
@@ -606,6 +655,35 @@ class CSUserManagementModule(BaseModule):
                 "success": False,
                 "error": "Internal server error"
             }), 500
+
+    def _prepare_user_response(self, user_data):
+        """Prepare user data for JSON response by converting datetime objects."""
+        import copy
+        response_data = copy.deepcopy(user_data)
+        
+        # Convert datetime objects to ISO format strings
+        datetime_fields = ['created_at', 'updated_at', 'last_login', 'password_changed_at', 'profile_updated_at']
+        
+        def convert_datetime(obj):
+            if isinstance(obj, dict):
+                for key, value in obj.items():
+                    if isinstance(value, datetime):
+                        obj[key] = value.isoformat()
+                    elif isinstance(value, dict):
+                        convert_datetime(value)
+            return obj
+        
+        # Convert main user data
+        response_data = convert_datetime(response_data)
+        
+        # Convert nested datetime fields
+        if 'modules' in response_data:
+            for module_name, module_data in response_data['modules'].items():
+                if isinstance(module_data, dict) and 'last_updated' in module_data:
+                    if isinstance(module_data['last_updated'], datetime):
+                        module_data['last_updated'] = module_data['last_updated'].isoformat()
+        
+        return response_data
 
     def _is_valid_email(self, email: str) -> bool:
         """Validate email format."""

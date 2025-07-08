@@ -2,8 +2,9 @@ from prometheus_client import Counter, Histogram, Gauge
 from prometheus_flask_exporter import PrometheusMetrics
 from flask import Flask
 
-# Initialize metrics with a custom prefix to avoid conflicts
-metrics = PrometheusMetrics.for_app_factory(app_name="credit_system")
+# Initialize metrics with app name from config
+from utils.config.config import Config
+metrics = PrometheusMetrics.for_app_factory(app_name=Config.APP_NAME)
 
 def init_metrics(app: Flask):
     """Initialize metrics for the Flask application."""

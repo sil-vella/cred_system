@@ -323,6 +323,17 @@ def get_security_status(mongodb_password=None, jwt_secret=None, redis_password=N
     return security_info
 
 class Config:
+    # Debug mode
+    DEBUG = get_config_value("flask-app/app", "debug", None, "FLASK_DEBUG", "False").lower() in ("true", "1")
+
+    # Application Identity Configuration
+    APP_ID = get_file_first_config_value("app_id", "APP_ID", "credit_system")
+    APP_NAME = get_file_first_config_value("app_name", "APP_NAME", "Credit System")
+    APP_VERSION = get_file_first_config_value("app_version", "APP_VERSION", "1.0.0")
+
+    # App URL Configuration
+    APP_URL = get_file_first_config_value("app_url", "APP_URL", "http://localhost:5000")
+
     # Flask Configuration
     FLASK_SERVICE_NAME = get_config_value("flask-app/app", "service_name", "flask_service_name", "FLASK_SERVICE_NAME", "flask")
     FLASK_PORT = int(get_config_value("flask-app/app", "port", "flask_port", "FLASK_PORT", "5000"))
@@ -359,12 +370,6 @@ class Config:
     REDIS_MAX_CONNECTIONS = int(get_file_first_config_value("redis_max_connections", "REDIS_MAX_CONNECTIONS", "10"))
     REDIS_MAX_RETRIES = int(get_file_first_config_value("redis_max_retries", "REDIS_MAX_RETRIES", "3"))
     RATE_LIMIT_STORAGE_URL = get_file_first_config_value("rate_limit_storage_url", "RATE_LIMIT_STORAGE_URL", f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}")
-
-    # Debug mode
-    DEBUG = get_config_value("flask-app/app", "debug", None, "FLASK_DEBUG", "False").lower() in ("true", "1")
-
-    # App URL Configuration
-    APP_URL = get_file_first_config_value("app_url", "APP_URL", "http://localhost:5000")
 
     # External Credit System Configuration
     CREDIT_SYSTEM_URL = get_file_first_config_value("credit_system_url", "CREDIT_SYSTEM_URL", "http://localhost:8000")
