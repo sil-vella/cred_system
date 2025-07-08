@@ -37,7 +37,7 @@ class CommunicationsModule(BaseModule):
         
         # Initialize API key manager for external app
         self.api_key_manager = APIKeyManager(self.redis_manager)
-        
+
         custom_log(f"CommunicationsModule module created with shared managers")
 
     def initialize(self, app_manager):
@@ -120,7 +120,6 @@ class CommunicationsModule(BaseModule):
         """Perform health check for CommunicationsModule."""
         health_status = super().health_check()
         health_status['dependencies'] = self.dependencies
-        
         # Add database queue status
         try:
             queue_status = self.admin_db.get_queue_status()
@@ -145,4 +144,4 @@ class CommunicationsModule(BaseModule):
                 }
             }
         
-        return health_status 
+        return health_status

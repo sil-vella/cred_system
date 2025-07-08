@@ -480,18 +480,18 @@ class APIKeyManager:
     def health_check(self) -> Dict[str, Any]:
         """Perform comprehensive health check for unified API Key Manager."""
         try:
-            health_status = {
+        health_status = {
                 'module': 'unified_api_key_manager',
-                'status': 'healthy',
+            'status': 'healthy',
                 'capabilities': {
                     'generation': True,
                     'validation': True,
                     'storage': True,
                     'cache_management': True
                 },
-                'details': {}
-            }
-            
+            'details': {}
+        }
+        
             # Test connection to credit system
             try:
                 response = requests.get(
