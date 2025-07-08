@@ -569,10 +569,10 @@ class Config:
     def get_credit_system_api_key(cls) -> str:
         """Get the credit system API key, generate if empty."""
         if not cls.CREDIT_SYSTEM_API_KEY or cls.CREDIT_SYSTEM_API_KEY == "":
-            # Try to generate API key automatically
-            from core.managers.api_key_generator import APIKeyGenerator
-            generator = APIKeyGenerator()
-            api_key = generator.generate_app_api_key()
+            # Try to generate API key automatically using unified APIKeyManager
+            from core.managers.api_key_manager import APIKeyManager
+            api_key_manager = APIKeyManager()
+            api_key = api_key_manager.generate_api_key_from_credit_system()
             if api_key:
                 cls.set_credit_system_api_key(api_key)
                 return api_key

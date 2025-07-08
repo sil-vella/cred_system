@@ -8,10 +8,10 @@ The Module System is the heart of our Flask Credit System, providing a structure
 
 | Module | Purpose | Dependencies | Status |
 |--------|---------|--------------|---------|
-| `connection_api` | Core database operations & API base | None | ✅ Active |
-| `user_management` | User authentication & CRUD | `connection_api` | ✅ Active |
-| `wallet_module` | Credit balance management | `connection_api`, `user_management` | ✅ Active |
-| `transactions_module` | Transaction processing | `connection_api`, `user_management`, `wallet_module` | ✅ Active |
+| `communications_module` | Core database operations & API base | None | ✅ Active |
+| `user_management` | User authentication & CRUD | `communications_module` | ✅ Active |
+| `wallet_module` | Credit balance management | `communications_module`, `user_management` | ✅ Active |
+| `transactions_module` | Transaction processing | `communications_module`, `user_management`, `wallet_module` | ✅ Active |
 
 ## 🏗️ Module Architecture
 
@@ -51,14 +51,14 @@ class BaseModule(ABC):
 ```python
 # ModuleRegistry automatically scans core/modules/ directory
 modules = ModuleRegistry.get_modules()
-# Returns: {'connection_api': ConnectionAPIModule, 'user_management': CSUserManagementModule, ...}
+# Returns: {'communications_module': CommunicationsModuleModule, 'user_management': CSUserManagementModule, ...}
 ```
 
 ### **2. Dependency Resolution**
 ```python
 # Analyze dependencies and create load order
 load_order = ModuleRegistry.get_module_load_order()
-# Returns: ['connection_api', 'user_management', 'wallet_module', 'transactions_module']
+# Returns: ['communications_module', 'user_management', 'wallet_module', 'transactions_module']
 
 # Detect circular dependencies
 circular_deps = ModuleRegistry.has_circular_dependencies()
@@ -103,11 +103,11 @@ Modules access their dependencies through the app_manager:
 ```python
 class WalletModule(BaseModule):
     NAME = "wallet_module"
-    DEPENDENCIES = ['connection_api', 'user_management']
+    DEPENDENCIES = ['communications_module', 'user_management']
     
     def initialize(self, app_manager) -> bool:
         # Access dependencies
-        self.connection_api = app_manager.module_manager.get_module('connection_api')
+        self.communications_module = app_manager.module_manager.get_module('communications_module')
         self.user_management = app_manager.module_manager.get_module('user_management')
         
         # Access infrastructure managers
@@ -194,7 +194,7 @@ Always declare dependencies explicitly:
 ```python
 class TransactionModule(BaseModule):
     NAME = "transactions_module"
-    DEPENDENCIES = ['connection_api', 'user_management', 'wallet_module']  # ✅ Clear dependencies
+    DEPENDENCIES = ['communications_module', 'user_management', 'wallet_module']  # ✅ Clear dependencies
 ```
 
 ### **3. Graceful Failure Handling**

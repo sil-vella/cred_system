@@ -111,8 +111,8 @@ Expected output:
 ✅ Redis manager initialized  
 ✅ JWT manager initialized
 🔍 Discovering modules...
-✅ Found 4 modules: ['connection_api', 'user_management', 'wallet', 'transactions']
-📊 Module load order: ['connection_api', 'user_management', 'wallet', 'transactions']
+✅ Found 4 modules: ['communications_module', 'user_management', 'wallet', 'transactions']
+📊 Module load order: ['communications_module', 'user_management', 'wallet', 'transactions']
 ✅ Module 'wallet' initialized successfully
 ✅ Module 'transactions' initialized successfully
 🌟 Flask app is running on http://localhost:5000
@@ -141,7 +141,7 @@ The system is organized around modules, not plugins:
 core/
 ├── modules/                    # 🎯 Business logic modules
 │   ├── base_module.py         # Abstract base class
-│   ├── connection_api.py      # Database operations
+│   ├── communications_module.py      # Database operations
 │   ├── user_management.py     # User auth & CRUD
 │   ├── wallet_module.py       # Credit balance management  
 │   └── transactions_module.py # Transaction processing
@@ -160,10 +160,10 @@ HTTP Request → Flask App → AppManager → ModuleManager → Specific Module 
 
 ### **Module Dependencies**
 ```
-connection_api (no dependencies)
-├── user_management (depends on: connection_api)
-    ├── wallet_module (depends on: connection_api, user_management)
-        └── transactions_module (depends on: connection_api, user_management, wallet_module)
+communications_module (no dependencies)
+├── user_management (depends on: communications_module)
+    ├── wallet_module (depends on: communications_module, user_management)
+        └── transactions_module (depends on: communications_module, user_management, wallet_module)
 ```
 
 ## 🔍 Exploring the System
@@ -219,7 +219,7 @@ from core.modules.base_module import BaseModule
 
 class MyModule(BaseModule):
     NAME = "my_module"
-    DEPENDENCIES = ['connection_api']
+    DEPENDENCIES = ['communications_module']
     
     def initialize(self, app_manager) -> bool:
         # Your initialization code

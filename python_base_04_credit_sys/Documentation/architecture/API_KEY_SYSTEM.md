@@ -19,7 +19,7 @@ The credit system implements a **dual authentication system** that supports both
   - If no API key, falls back to JWT token validation
   - If neither exists, returns 401 Unauthorized
 
-### 3. **Connection API Module** (`connection_api_main.py`)
+### 3. **Connection API Module** (`communications_module.py`)
 - **Purpose**: Provides API key management endpoints
 - **Endpoints**:
   - `POST /api-keys/generate` - Generate new API key

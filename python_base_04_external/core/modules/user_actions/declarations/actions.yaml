@@ -1,69 +1,10 @@
 # User Actions Configuration
 # This file defines declarative actions for the UserActionsModule
+# Note: User-specific actions have been removed as they should be handled by the credit system
 
 actions:
-  get_user_profile:
-    description: "Retrieve user profile information"
-    type: "function"
-    function: "get_user_profile"
-    required_params:
-      - "user_id"
-    optional_params:
-      - "include_preferences"
-      - "include_activity"
-    examples:
-      - description: "Get basic profile"
-        request: '{"user_id": "12345"}'
-      - description: "Get profile with preferences"
-        request: '{"user_id": "12345", "include_preferences": true}'
-
-  update_user_preferences:
-    description: "Update user preferences and settings"
-    type: "function"
-    function: "update_user_preferences"
-    required_params:
-      - "user_id"
-      - "preferences"
-    optional_params:
-      - "notify_user"
-    examples:
-      - description: "Update theme preference"
-        request: '{"user_id": "12345", "preferences": {"theme": "dark"}}'
-
-  send_user_notification:
-    description: "Send a notification to a user"
-    type: "external_api"
-    url: "https://api.notifications.service/send"
-    method: "POST"
-    required_params:
-      - "user_id"
-      - "message"
-    optional_params:
-      - "priority"
-      - "channel"
-    examples:
-      - description: "Send welcome notification"
-        request: '{"user_id": "12345", "message": "Welcome to our platform!", "priority": "normal"}'
-
-  log_user_activity:
-    description: "Log user activity for analytics"
-    type: "database"
-    operation: "insert"
-    collection: "user_activities"
-    required_params:
-      - "user_id"
-      - "activity_type"
-    optional_params:
-      - "metadata"
-      - "timestamp"
-    examples:
-      - description: "Log login activity"
-        request: '{"user_id": "12345", "activity_type": "login", "metadata": {"ip": "192.168.1.1"}}'
-      - description: "Log page view"
-        request: '{"user_id": "12345", "activity_type": "page_view", "metadata": {"page": "/dashboard", "duration": 120}}'
-
   validate_user_permissions:
-    description: "Check if user has specific permissions"
+    description: "Check if user has specific permissions (generic framework)"
     type: "function"
     function: "validate_user_permissions"
     required_params:
@@ -74,22 +15,53 @@ actions:
     examples:
       - description: "Check admin permission"
         request: '{"user_id": "12345", "permission": "admin"}'
+      - description: "Check read permission for resource"
+        request: '{"user_id": "12345", "permission": "read", "resource_id": "doc_123"}'
 
-  find_users:
-    description: "Find users with filters"
+  log_system_activity:
+    description: "Log system activity for analytics"
     type: "database"
-    operation: "find"
-    collection: "users"
+    operation: "insert"
+    collection: "system_activities"
     required_params:
-      - "query"
+      - "activity_type"
+      - "source"
     optional_params:
-      - "limit"
-      - "skip"
+      - "metadata"
+      - "timestamp"
     examples:
-      - description: "Find all active users"
-        request: '{"query": {"status": "active"}}'
-      - description: "Find users by email pattern"
-        request: '{"query": {"email": {"$regex": "john", "$options": "i"}}}'
+      - description: "Log system startup"
+        request: '{"activity_type": "system_startup", "source": "external_app", "metadata": {"version": "2.0"}}'
+      - description: "Log API call"
+        request: '{"activity_type": "api_call", "source": "stripe_module", "metadata": {"endpoint": "/stripe/create-payment-intent"}}'
+
+  send_external_notification:
+    description: "Send a notification to external service"
+    type: "external_api"
+    url: "https://api.notifications.service/send"
+    method: "POST"
+    required_params:
+      - "message"
+      - "recipient"
+    optional_params:
+      - "priority"
+      - "channel"
+    examples:
+      - description: "Send system notification"
+        request: '{"message": "Payment processed successfully", "recipient": "admin@company.com", "priority": "normal"}'
+
+  get_system_status:
+    description: "Get system status information"
+    type: "function"
+    function: "get_system_status"
+    required_params: []
+    optional_params:
+      - "include_details"
+    examples:
+      - description: "Get basic system status"
+        request: '{}'
+      - description: "Get detailed system status"
+        request: '{"include_details": true}'
 
 # Global configuration for the module
 config:

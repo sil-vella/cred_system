@@ -8,7 +8,7 @@ class WalletModule(BaseModule):
     def __init__(self, app_manager=None):
         """Initialize the WalletModule."""
         super().__init__(app_manager)
-        self.dependencies = ["connection_api", "user_management"]
+        self.dependencies = ["communications_module", "user_management"]
         custom_log("WalletModule created")
 
     def initialize(self, app_manager):

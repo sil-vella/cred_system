@@ -30,11 +30,11 @@ from flask import request, jsonify
 
 class MyNewModule(BaseModule):
     NAME = "my_new_module"
-    DEPENDENCIES = ['connection_api']  # Declare any dependencies
+    DEPENDENCIES = ['communications_module']  # Declare any dependencies
     
     def __init__(self):
         super().__init__()
-        self.connection_api = None
+        self.communications_module = None
         self.db = None
         self.initialized_at = None
     
@@ -44,9 +44,9 @@ class MyNewModule(BaseModule):
             custom_log(f"Initializing {self.NAME}...")
             
             # Access dependencies
-            self.connection_api = app_manager.module_manager.get_module('connection_api')
-            if not self.connection_api:
-                custom_log(f"❌ {self.NAME}: Required dependency 'connection_api' not available")
+            self.communications_module = app_manager.module_manager.get_module('communications_module')
+            if not self.communications_module:
+                custom_log(f"❌ {self.NAME}: Required dependency 'communications_module' not available")
                 return False
             
             # Access infrastructure managers
@@ -91,7 +91,7 @@ class MyNewModule(BaseModule):
             db_healthy = self.db.is_connected() if self.db else False
             
             # Check dependencies
-            dependencies_healthy = self.connection_api is not None
+            dependencies_healthy = self.communications_module is not None
             
             # Overall health
             healthy = db_healthy and dependencies_healthy
@@ -188,11 +188,11 @@ For modules with multiple dependencies:
 ```python
 class AdvancedModule(BaseModule):
     NAME = "advanced_module"
-    DEPENDENCIES = ['connection_api', 'user_management', 'wallet_module']
+    DEPENDENCIES = ['communications_module', 'user_management', 'wallet_module']
     
     def initialize(self, app_manager) -> bool:
         # Access all dependencies
-        self.connection_api = app_manager.module_manager.get_module('connection_api')
+        self.communications_module = app_manager.module_manager.get_module('communications_module')
         self.user_management = app_manager.module_manager.get_module('user_management')
         self.wallet_module = app_manager.module_manager.get_module('wallet_module')
         
@@ -341,19 +341,19 @@ class TestMyNewModule(unittest.TestCase):
     def test_module_initialization(self):
         """Test module initializes correctly"""
         # Mock dependencies
-        mock_connection_api = Mock()
-        self.mock_app_manager.module_manager.get_module.return_value = mock_connection_api
+        mock_communications_module = Mock()
+        self.mock_app_manager.module_manager.get_module.return_value = mock_communications_module
         
         # Test initialization
         result = self.module.initialize(self.mock_app_manager)
         
         self.assertTrue(result)
-        self.assertEqual(self.module.connection_api, mock_connection_api)
+        self.assertEqual(self.module.communications_module, mock_communications_module)
     
     def test_health_check(self):
         """Test health check returns correct status"""
         # Setup module state
-        self.module.connection_api = Mock()
+        self.module.communications_module = Mock()
         self.module.db = Mock()
         self.module.db.is_connected.return_value = True
         
@@ -411,7 +411,7 @@ Document your module comprehensively:
 Brief description of what this module does.
 
 ## Dependencies
-- connection_api: Required for database operations
+- communications_module: Required for database operations
 
 ## Endpoints
 - `GET /my-module/info` - Get module information

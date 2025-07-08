@@ -16,7 +16,7 @@ class StripeModule(BaseModule):
     def __init__(self, app_manager=None):
         """Initialize the StripeModule."""
         super().__init__(app_manager)
-        self.dependencies = ["connection_api", "user_management", "transactions"]
+        self.dependencies = ["communications_module", "user_management", "transactions"]
         
         # Initialize Stripe with secure key management
         self.stripe = None

@@ -43,7 +43,7 @@ app.py
     ├── PluginManager (❌ REMOVED)
         ├── MainPlugin (❌ REMOVED)
             ├── ModuleManager
-                ├── connection_api module
+                ├── communications_module module
                 ├── user_management module  
                 ├── wallet_module
                 └── transactions_module
@@ -54,7 +54,7 @@ app.py
 app.py
 ├── AppManager
     ├── ModuleManager (⭐ ENHANCED)
-        ├── connection_api module
+        ├── communications_module module
         ├── user_management module
         ├── wallet_module  
         └── transactions_module
@@ -70,7 +70,7 @@ app.py
 -   ├── main_plugin/
 -       ├── main_plugin_main.py
 -       └── modules/
--           ├── connection_api/
+-           ├── communications_module/
 -           ├── user_management/
 -           ├── wallet_module/
 -           └── transactions_module/
@@ -79,7 +79,7 @@ app.py
 + core/
 +   ├── modules/                    # ⭐ NEW PRIMARY LOCATION
 +       ├── base_module.py          # ⭐ NEW Abstract base class
-+       ├── connection_api.py       # 📦 MIGRATED & REFACTORED
++       ├── communications_module.py       # 📦 MIGRATED & REFACTORED
 +       ├── user_management.py      # 📦 MIGRATED & REFACTORED
 +       ├── wallet_module.py        # 📦 MIGRATED & REFACTORED
 +       └── transactions_module.py  # 📦 MIGRATED & REFACTORED
@@ -183,7 +183,7 @@ Each module was migrated using this pattern:
 
 ```python
 # BEFORE (Plugin-based)
-class ConnectionAPI:
+class CommunicationsModule:
     def __init__(self, plugin_manager):
         self.plugin_manager = plugin_manager
         
@@ -192,8 +192,8 @@ class ConnectionAPI:
         pass
 
 # AFTER (Module-first)  
-class ConnectionAPIModule(BaseModule):
-    NAME = "connection_api"
+class CommunicationsModuleModule(BaseModule):
+    NAME = "communications_module"
     DEPENDENCIES = []
     
     def initialize(self, app_manager) -> bool:
@@ -213,14 +213,14 @@ class ConnectionAPIModule(BaseModule):
 Modules now declare dependencies explicitly:
 
 ```python
-# Example: wallet_module depends on connection_api and user_management
+# Example: wallet_module depends on communications_module and user_management
 class WalletModule(BaseModule):
     NAME = "wallet_module"
-    DEPENDENCIES = ['connection_api', 'user_management']
+    DEPENDENCIES = ['communications_module', 'user_management']
     
     def initialize(self, app_manager) -> bool:
         # Access dependencies through module manager
-        self.connection_api = app_manager.module_manager.get_module('connection_api')
+        self.communications_module = app_manager.module_manager.get_module('communications_module')
         self.user_management = app_manager.module_manager.get_module('user_management')
         return True
 ```
@@ -250,13 +250,13 @@ class WalletModule(BaseModule):
 ### **Load Order Validation**
 ```python
 # Calculated dependency order
-['connection_api', 'user_management', 'wallet_module', 'transactions_module']
+['communications_module', 'user_management', 'wallet_module', 'transactions_module']
 
 # Dependency graph
-connection_api (no dependencies)
-├── user_management (depends on: connection_api)
-    ├── wallet_module (depends on: connection_api, user_management)
-        └── transactions_module (depends on: connection_api, user_management, wallet_module)
+communications_module (no dependencies)
+├── user_management (depends on: communications_module)
+    ├── wallet_module (depends on: communications_module, user_management)
+        └── transactions_module (depends on: communications_module, user_management, wallet_module)
 ```
 
 ## 🔍 Migration Benefits Realized

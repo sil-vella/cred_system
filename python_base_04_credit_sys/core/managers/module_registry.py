@@ -85,10 +85,10 @@ class ModuleRegistry:
         :return: Dictionary mapping module keys to their dependencies
         """
         dependencies = {
-            "connection_api": [],  # Core API - no dependencies
-            "cs_user_management": ["connection_api"],  # Needs API infrastructure
-            "wallet": ["connection_api", "cs_user_management"],  # Needs API and users
-            "transactions": ["connection_api", "cs_user_management", "wallet"],  # Needs API, users, and wallet
+            "communications": [],  # Core API - no dependencies
+            "cs_user_management": ["communications"],  # Needs API infrastructure
+            "wallet": ["communications", "cs_user_management"],  # Needs API and users
+            "transactions": ["communications", "cs_user_management", "wallet"],  # Needs API, users, and wallet
         }
         
         custom_log(f"Module dependencies defined: {dependencies}")
@@ -102,7 +102,7 @@ class ModuleRegistry:
         :return: Dictionary mapping module keys to their config
         """
         return {
-            "connection_api": {
+            "communications": {
                 "enabled": True,
                 "priority": 1,
                 "health_check_enabled": True,

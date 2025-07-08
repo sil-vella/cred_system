@@ -20,17 +20,7 @@ class UserActionsModule(BaseModule):
         # Load actions configuration
         self.actions_config = self._load_actions_config()
         
-        # Initialize database managers
-        if app_manager:
-            self.db_manager = app_manager.get_db_manager(role="read_write")
-            self.analytics_db = app_manager.get_db_manager(role="read_only")
-        else:
-            # Fallback for testing
-            from core.managers.database_manager import DatabaseManager
-            self.db_manager = DatabaseManager(role="read_write")
-            self.analytics_db = DatabaseManager(role="read_only")
-        
-        custom_log("UserActionsModule created with database managers")
+        custom_log("UserActionsModule created")
 
     def initialize(self, app_manager):
         """Initialize the UserActionsModule with AppManager."""
@@ -48,49 +38,40 @@ class UserActionsModule(BaseModule):
         
         custom_log(f"UserActionsModule registered {len(self.registered_routes)} routes")
 
-    def _load_actions_config(self) -> Dict[str, Any]:
-        """Load actions configuration from YAML file."""
-        try:
-            if os.path.exists(self.actions_file):
-                with open(self.actions_file, 'r') as file:
-                    config = yaml.safe_load(file)
-                    custom_log(f"Loaded {len(config.get('actions', {}))} actions from {self.actions_file}")
-                    return config
-            else:
-                custom_log(f"Actions file not found: {self.actions_file}")
-                return {"actions": {}}
-        except Exception as e:
-            custom_log(f"Error loading actions config: {e}")
-            return {"actions": {}}
-
     def execute_action(self, action_name: str):
-        """Execute an action based on YAML configuration."""
+        """Execute a user action based on YAML configuration."""
         try:
             # Get action configuration
-            action_config = self.actions_config.get("actions", {}).get(action_name)
+            action_config = self.actions_config.get('actions', {}).get(action_name)
+            
             if not action_config:
-                return jsonify({'error': f'Action "{action_name}" not found'}), 404
-
-            # Get request data (named arguments)
+                return jsonify({
+                    'error': f'Action "{action_name}" not found',
+                    'available_actions': list(self.actions_config.get('actions', {}).keys())
+                }), 404
+            
+            # Get request data
             request_data = request.get_json() or {}
             
             # Validate required parameters
-            required_params = action_config.get("required_params", [])
+            required_params = action_config.get('required_params', [])
             missing_params = [param for param in required_params if param not in request_data]
+            
             if missing_params:
                 return jsonify({
                     'error': f'Missing required parameters: {missing_params}',
-                    'required_params': required_params
+                    'required_params': required_params,
+                    'optional_params': action_config.get('optional_params', [])
                 }), 400
-
-            # Execute the action based on type
-            action_type = action_config.get("type", "function")
+            
+            # Execute action based on type
+            action_type = action_config.get('type', 'function')
             result = self._execute_action_by_type(action_type, action_config, request_data)
             
             return jsonify({
+                'success': True,
                 'action': action_name,
-                'result': result,
-                'status': 'success'
+                'result': result
             }), 200
 
         except Exception as e:
@@ -111,200 +92,147 @@ class UserActionsModule(BaseModule):
     def _execute_function_action(self, action_config: Dict, request_data: Dict) -> Any:
         """Execute a function-based action."""
         function_name = action_config.get("function")
-        if function_name == "get_user_profile":
-            return self._get_user_profile(request_data)
-        elif function_name == "update_user_preferences":
-            return self._update_user_preferences(request_data)
-        elif function_name == "validate_user_permissions":
+        
+        # Note: User-specific functions have been removed as they should be handled by credit system
+        # Only generic utility functions should remain here
+        if function_name == "validate_user_permissions":
             return self._validate_user_permissions(request_data)
         else:
             raise ValueError(f"Unknown function: {function_name}")
 
     def _execute_database_action(self, action_config: Dict, request_data: Dict) -> Any:
-        """Execute a database-based action."""
-        try:
-            operation = action_config.get("operation")
-            collection = action_config.get("collection")
+        """Execute a database action."""
+        operation = action_config.get("operation")
+        collection = action_config.get("collection")
+        query = request_data.get("query", {})
+        
+        if operation == "find":
+            # Note: User-specific database operations should be forwarded to credit system
+            # This is kept for non-user collections only
+            if collection == "users":
+                raise ValueError("User operations should be handled by credit system")
             
-            if operation == "insert":
-                # Insert document into collection
-                document_id = self.db_manager.insert(collection, request_data)
-                return {
-                    "operation": operation,
-                    "collection": collection,
-                    "inserted_id": str(document_id),
-                    "status": "inserted"
-                }
-            elif operation == "find":
-                # Find documents in collection
-                query = request_data.get("query", {})
-                documents = self.analytics_db.find(collection, query)
-                return {
-                    "operation": operation,
-                    "collection": collection,
-                    "documents": documents,
-                    "count": len(documents),
-                    "status": "found"
-                }
-            elif operation == "update":
-                # Update documents in collection
-                query = request_data.get("query", {})
-                update_data = request_data.get("update", {})
-                modified_count = self.db_manager.update(collection, query, {"$set": update_data})
-                return {
-                    "operation": operation,
-                    "collection": collection,
-                    "modified_count": modified_count,
-                    "status": "updated"
-                }
-            elif operation == "delete":
-                # Delete documents from collection
-                query = request_data.get("query", {})
-                deleted_count = self.db_manager.delete(collection, query)
-                return {
-                    "operation": operation,
-                    "collection": collection,
-                    "deleted_count": deleted_count,
-                    "status": "deleted"
-                }
+            # For non-user collections, use local database
+            if self.app_manager:
+                db_manager = self.app_manager.get_db_manager(role="read_only")
+                return db_manager.find(collection, query)
             else:
-                return {
-                    "operation": operation,
-                    "collection": collection,
-                    "error": f"Unknown operation: {operation}",
-                    "status": "error"
-                }
-                
-        except Exception as e:
-            custom_log(f"Error executing database action: {e}")
-            return {
-                "operation": operation,
-                "collection": collection,
-                "error": f"Database error: {str(e)}",
-                "status": "error"
-            }
+                raise ValueError("Database manager not available")
+        
+        else:
+            raise ValueError(f"Unknown database operation: {operation}")
 
     def _execute_external_api_action(self, action_config: Dict, request_data: Dict) -> Any:
         """Execute an external API action."""
-        # This would make HTTP requests to external services
+        import requests
+        
         url = action_config.get("url")
         method = action_config.get("method", "GET")
         
+        if not url:
+            raise ValueError("External API URL not configured")
+        
+        # Make request to external API
+        response = requests.request(
+            method=method,
+            url=url,
+            json=request_data,
+            timeout=30
+        )
+        
         return {
-            "url": url,
-            "method": method,
-            "data": request_data,
-            "status": "external_api_placeholder"
-        }
-
-    def _get_user_profile(self, request_data: Dict) -> Dict:
-        """Get user profile from database."""
-        try:
-            user_id = request_data.get("user_id")
-            
-            # Convert string user_id to ObjectId if needed
-            from bson import ObjectId
-            if isinstance(user_id, str) and len(user_id) == 24:
-                try:
-                    user_id = ObjectId(user_id)
-                except:
-                    pass  # Keep as string if conversion fails
-            
-            # Query user from database
-            user = self.analytics_db.find_one("users", {"_id": user_id})
-            
-            if not user:
-                return {
-                    "user_id": str(user_id),
-                    "error": "User not found",
-                    "status": "not_found"
-                }
-            
-            # Remove sensitive data
-            user.pop('password', None)
-            
-            # Get user's wallet if available
-            wallet = self.analytics_db.find_one("wallets", {"user_id": str(user.get("_id"))})
-            
-            profile = {
-                "user_id": str(user.get("_id")),
-                "username": user.get("username"),
-                "email": user.get("email"),
-                "status": user.get("status"),
-                "created_at": user.get("created_at"),
-                "wallet": wallet
-            }
-            
-            return {
-                "user_id": str(user_id),
-                "profile": profile,
-                "status": "found"
-            }
-            
-        except Exception as e:
-            custom_log(f"Error getting user profile: {e}")
-            return {
-                "user_id": str(user_id),
-                "error": f"Database error: {str(e)}",
-                "status": "error"
-            }
-
-    def _update_user_preferences(self, request_data: Dict) -> Dict:
-        """Example function action: Update user preferences."""
-        user_id = request_data.get("user_id")
-        preferences = request_data.get("preferences", {})
-        return {
-            "user_id": user_id,
-            "updated_preferences": preferences,
-            "status": "updated"
+            'status_code': response.status_code,
+            'response': response.json() if response.content else {}
         }
 
     def _validate_user_permissions(self, request_data: Dict) -> Dict:
-        """Example function action: Validate user permissions."""
-        user_id = request_data.get("user_id")
-        permission = request_data.get("permission")
-        resource_id = request_data.get("resource_id")
-        
-        # Mock permission validation logic
-        has_permission = permission in ["read", "write", "admin"]
-        
-        return {
-            "user_id": user_id,
-            "permission": permission,
-            "resource_id": resource_id,
-            "has_permission": has_permission,
-            "status": "validated"
-        }
+        """Validate user permissions (generic utility function)."""
+        try:
+            user_id = request_data.get("user_id")
+            permission = request_data.get("permission")
+            resource_id = request_data.get("resource_id")
+            
+            if not user_id or not permission:
+                return {
+                    "valid": False,
+                    "error": "User ID and permission are required"
+                }
+            
+            # This is a generic permission validation framework
+            # Specific user permission logic should be handled by credit system
+            return {
+                "valid": True,
+                "user_id": user_id,
+                "permission": permission,
+                "resource_id": resource_id,
+                "message": "Permission validation framework available"
+            }
+            
+        except Exception as e:
+            custom_log(f"Error validating user permissions: {e}")
+            return {
+                "valid": False,
+                "error": f"Permission validation error: {str(e)}"
+            }
 
     def list_actions(self):
         """List all available actions."""
         try:
-            actions = self.actions_config.get("actions", {})
-            action_list = []
+            actions = self.actions_config.get('actions', {})
             
+            # Format actions for display
+            formatted_actions = {}
             for action_name, action_config in actions.items():
-                action_info = {
-                    "name": action_name,
-                    "description": action_config.get("description", ""),
-                    "type": action_config.get("type", "function"),
-                    "required_params": action_config.get("required_params", []),
-                    "optional_params": action_config.get("optional_params", [])
+                formatted_actions[action_name] = {
+                    'description': action_config.get('description', ''),
+                    'type': action_config.get('type', ''),
+                    'required_params': action_config.get('required_params', []),
+                    'optional_params': action_config.get('optional_params', []),
+                    'examples': action_config.get('examples', [])
                 }
-                action_list.append(action_info)
             
             return jsonify({
-                "actions": action_list,
-                "total": len(action_list)
+                'success': True,
+                'actions': formatted_actions,
+                'total_actions': len(formatted_actions)
             }), 200
             
         except Exception as e:
             custom_log(f"Error listing actions: {e}")
-            return jsonify({'error': 'Failed to list actions'}), 500
+            return jsonify({'error': f'Failed to list actions: {str(e)}'}), 500
+
+    def _load_actions_config(self) -> Dict[str, Any]:
+        """Load actions configuration from YAML file."""
+        try:
+            if os.path.exists(self.actions_file):
+                with open(self.actions_file, 'r') as f:
+                    config = yaml.safe_load(f)
+                custom_log(f"✅ Loaded actions configuration from {self.actions_file}")
+                return config
+            else:
+                custom_log(f"⚠️ Actions configuration file not found: {self.actions_file}")
+                return {'actions': {}}
+                
+        except Exception as e:
+            custom_log(f"❌ Error loading actions configuration: {e}")
+            return {'actions': {}}
 
     def health_check(self) -> Dict[str, Any]:
         """Perform health check for UserActionsModule."""
         health_status = super().health_check()
         health_status['dependencies'] = self.dependencies
-        health_status['actions_loaded'] = len(self.actions_config.get("actions", {}))
-        health_status['actions_file'] = self.actions_file
+        
+        # Add actions configuration status
+        try:
+            actions_count = len(self.actions_config.get('actions', {}))
+            health_status['details'] = {
+                'actions_configured': actions_count,
+                'config_file': self.actions_file,
+                'config_loaded': bool(self.actions_config.get('actions'))
+            }
+        except Exception as e:
+            health_status['details'] = {
+                'error': f'Failed to check actions config: {str(e)}'
+            }
+        
         return health_status 

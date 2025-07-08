@@ -17,7 +17,7 @@ class CSUserManagementModule(BaseModule):
         super().__init__(app_manager)
         
         # Set dependencies
-        self.dependencies = ["connection_api"]
+        self.dependencies = ["communications_module"]
         
         # Use centralized managers from app_manager instead of creating new instances
         if app_manager:

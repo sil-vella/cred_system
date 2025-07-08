@@ -89,7 +89,7 @@ core/
 ├── modules/                    # 🎯 Primary module location
 │   ├── __init__.py
 │   ├── base_module.py         # Abstract base class
-│   ├── connection_api.py      # Core API operations
+│   ├── communications_module.py      # Core API operations
 │   ├── user_management.py     # User auth & management
 │   ├── wallet_module.py       # Credit balance management
 │   └── transactions_module.py # Transaction processing
@@ -104,7 +104,7 @@ core/
 ### **Dependency Graph**
 ```mermaid
 graph TD
-    A[connection_api] --> B[user_management]
+    A[communications_module] --> B[user_management]
     A --> C[wallet_module]  
     A --> D[transactions_module]
     B --> C
@@ -116,18 +116,18 @@ graph TD
 The system automatically resolves dependencies:
 ```python
 # Automatically calculated load order:
-['connection_api', 'user_management', 'wallet_module', 'transactions_module']
+['communications_module', 'user_management', 'wallet_module', 'transactions_module']
 ```
 
 ### **Dependency Declaration**
 Modules declare dependencies explicitly:
 ```python
 class UserManagementModule(BaseModule):
-    DEPENDENCIES = ['connection_api']
+    DEPENDENCIES = ['communications_module']
     
     def initialize(self, app_manager):
         # Access dependency
-        self.connection_api = app_manager.module_manager.get_module('connection_api')
+        self.communications_module = app_manager.module_manager.get_module('communications_module')
 ```
 
 ## 🔄 Module Lifecycle
@@ -136,14 +136,14 @@ class UserManagementModule(BaseModule):
 ```python
 # Automatic module discovery
 modules = ModuleRegistry.get_modules()
-# Result: {'connection_api': ConnectionAPIModule, 'user_management': UserManagementModule, ...}
+# Result: {'communications_module': CommunicationsModuleModule, 'user_management': UserManagementModule, ...}
 ```
 
 ### **2. Dependency Resolution**
 ```python
 # Calculate load order
 load_order = ModuleRegistry.get_module_load_order()
-# Result: ['connection_api', 'user_management', 'wallet_module', 'transactions_module']
+# Result: ['communications_module', 'user_management', 'wallet_module', 'transactions_module']
 
 # Detect circular dependencies
 if ModuleRegistry.has_circular_dependencies():
@@ -178,13 +178,13 @@ from core.modules.base_module import BaseModule
 
 class MyNewModule(BaseModule):
     NAME = "my_new_module"
-    DEPENDENCIES = ['connection_api']  # Declare dependencies
+    DEPENDENCIES = ['communications_module']  # Declare dependencies
     
     def initialize(self, app_manager) -> bool:
         """Initialize module with dependencies"""
         try:
             # Access dependencies
-            self.connection_api = app_manager.module_manager.get_module('connection_api')
+            self.communications_module = app_manager.module_manager.get_module('communications_module')
             self.db = app_manager.database_manager
             
             # Module-specific initialization
@@ -204,7 +204,7 @@ class MyNewModule(BaseModule):
         return {
             "status": "healthy",
             "module": self.NAME,
-            "dependencies_ok": self.connection_api is not None
+            "dependencies_ok": self.communications_module is not None
         }
 ```
 
@@ -236,7 +236,7 @@ GET /modules/status
     "initialized_modules": 4,
     "failed_modules": 0,
     "modules": {
-        "connection_api": {"status": "initialized", "health": "healthy"},
+        "communications_module": {"status": "initialized", "health": "healthy"},
         "user_management": {"status": "initialized", "health": "healthy"},
         "wallet_module": {"status": "initialized", "health": "healthy"},
         "transactions_module": {"status": "initialized", "health": "healthy"}
@@ -252,7 +252,7 @@ GET /modules/wallet_module/health
 {
     "status": "healthy",
     "module": "wallet_module",
-    "dependencies": ["connection_api", "user_management"],
+    "dependencies": ["communications_module", "user_management"],
     "last_check": "2024-07-01T18:30:00Z"
 }
 ```

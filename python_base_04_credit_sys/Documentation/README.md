@@ -11,7 +11,7 @@
 ### 🧩 [Modules](./modules/)
 - [Module System Overview](./modules/MODULE_SYSTEM.md) - How the module system works
 - [Base Module](./modules/BASE_MODULE.md) - Abstract base class for all modules
-- [Connection API](./modules/CONNECTION_API.md) - Core database and API operations
+- [Connection API](./modules/communications_module.md) - Core database and API operations
 - [User Management](./modules/USER_MANAGEMENT.md) - User authentication and management
 - [Wallet Module](./modules/WALLET_MODULE.md) - Credit balance management
 - [Transactions Module](./modules/TRANSACTIONS_MODULE.md) - Transaction processing
@@ -65,7 +65,7 @@
 
 - **Architecture**: Module-First ✅
 - **Plugin System**: Deprecated ❌ → Removed ✅
-- **Modules Active**: 4 (connection_api, user_management, wallet, transactions)
+- **Modules Active**: 4 (communications_module, user_management, wallet, transactions)
 - **Documentation Coverage**: Complete ✅
 - **Production Ready**: Yes ✅
 

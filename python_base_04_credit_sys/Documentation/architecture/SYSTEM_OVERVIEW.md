@@ -79,7 +79,7 @@ Default Values (Lowest Priority)
 ## 📱 Module System
 
 ### **Active Modules**
-1. **connection_api**: Core database operations and API base
+1. **communications_module**: Core database operations and API base
 2. **user_management**: User authentication and CRUD operations
 3. **wallet_module**: Credit balance management and operations
 4. **transactions_module**: Transaction processing and history

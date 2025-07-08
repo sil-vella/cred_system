@@ -5,7 +5,7 @@ This package contains all the independent functional modules.
 
 __all__ = [
     'BaseModule',
-    'ConnectionAPI',
+    'CommunicationsModule',
     'WalletModule', 
     'TransactionsModule',
     'CSUserManagementModule',

@@ -10,7 +10,7 @@ class TransactionsModule(BaseModule):
     def __init__(self, app_manager=None):
         """Initialize the TransactionsModule."""
         super().__init__(app_manager)
-        self.dependencies = ["connection_api", "user_management", "wallet", "stripe"]
+        self.dependencies = ["communications_module", "user_management", "wallet", "stripe"]
         
         # Use centralized managers from app_manager
         if app_manager:

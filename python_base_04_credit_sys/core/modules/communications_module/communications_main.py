@@ -15,9 +15,9 @@ from typing import Dict, Any
 from core.modules.base_module import BaseModule
 
 
-class ConnectionAPI(BaseModule):
+class CommunicationsModule(BaseModule):
     def __init__(self, app_manager=None):
-        """Initialize the ConnectionAPI module with Redis and database connections."""
+        """Initialize the CommunicationsModule module with Redis and database connections."""
         super().__init__(app_manager)
         
         # Set dependencies (this module has no dependencies)
@@ -53,13 +53,13 @@ class ConnectionAPI(BaseModule):
         self.max_concurrent_sessions = 1  # Only one session allowed per user
         self.session_check_interval = 300  # 5 minutes in seconds
 
-        custom_log(f"ConnectionAPI module created with shared managers")
+        custom_log(f"CommunicationsModule module created with shared managers")
 
     def initialize(self, app_manager):
-        """Initialize the ConnectionAPI with AppManager."""
+        """Initialize the CommunicationsModule with AppManager."""
         self.app_manager = app_manager
         self.app = app_manager.flask_app
-        custom_log(f"ConnectionAPI initialized with AppManager")
+        custom_log(f"CommunicationsModule initialized with AppManager")
         
         # Ensure collections exist in the database
         self.initialize_database()
@@ -67,30 +67,26 @@ class ConnectionAPI(BaseModule):
         # Register routes
         self.register_routes()
         
-        # Auto-generate API key for external app if needed
-        self.ensure_external_app_api_key()
-        
         # Mark as initialized
         self._initialized = True
 
     def register_routes(self):
-        """Register all ConnectionAPI routes."""
-        custom_log("Registering ConnectionAPI routes...")
+        """Register all CommunicationsModule routes."""
+        custom_log("Registering CommunicationsModule routes...")
         
         # Register core routes
         self._register_route_helper("/", self.home, methods=["GET"])
         self._register_route_helper("/auth/refresh", self.refresh_token_endpoint, methods=["POST"])
         self._register_route_helper("/get-db-data", self.get_all_database_data, methods=["GET"])
         
-        # Register API key management routes
-        self._register_route_helper("/api-keys/generate", self.generate_api_key, methods=["POST"])
-        self._register_route_helper("/api-keys/validate", self.validate_api_key, methods=["POST"])
-        self._register_route_helper("/api-keys/revoke", self.revoke_api_key, methods=["POST"])
-        self._register_route_helper("/api-keys/list", self.list_api_keys, methods=["GET"])
-        self._register_route_helper("/api-keys/stored", self.list_stored_api_keys, methods=["GET"])
-        self._register_route_helper("/api-keys/request-from-credit-system", self.request_api_key_from_credit_system, methods=["POST"])
+        # Register API key management routes directly from API Key Manager
+        self._register_route_helper("/api-keys/generate", self.api_key_manager.generate_api_key_endpoint, methods=["POST"])
+        self._register_route_helper("/api-keys/validate", self.api_key_manager.validate_api_key_endpoint, methods=["POST"])
+        self._register_route_helper("/api-keys/revoke", self.api_key_manager.revoke_api_key_endpoint, methods=["POST"])
+        self._register_route_helper("/api-keys/list", self.api_key_manager.list_api_keys_endpoint, methods=["GET"])
+        self._register_route_helper("/api-keys/stored", self.api_key_manager.list_stored_api_keys_endpoint, methods=["GET"])
         
-        custom_log(f"ConnectionAPI registered {len(self.registered_routes)} routes")
+        custom_log(f"CommunicationsModule registered {len(self.registered_routes)} routes")
 
     def initialize_database(self):
         """Verify database connection without creating collections or indexes."""
@@ -119,7 +115,7 @@ class ConnectionAPI(BaseModule):
 
     def home(self):
         """Handle the root route."""
-        return {"message": "ConnectionAPI module is running", "version": "2.0", "module": "connection_api"}
+        return {"message": "CommunicationsModule module is running", "version": "2.0", "module": "communications_module"}
 
     def get_all_database_data(self):
         """Get all data from all collections in the database."""
@@ -453,7 +449,7 @@ class ConnectionAPI(BaseModule):
             return False
 
     def health_check(self) -> Dict[str, Any]:
-        """Perform comprehensive health check for ConnectionAPI module."""
+        """Perform comprehensive health check for CommunicationsModule module."""
         health_status = {
             'module': self.module_name,
             'status': 'healthy',
@@ -506,7 +502,7 @@ class ConnectionAPI(BaseModule):
         return health_status
 
     def dispose(self):
-        """Cleanup ConnectionAPI resources."""
+        """Cleanup CommunicationsModule resources."""
         super().dispose()
         
         try:
@@ -522,227 +518,8 @@ class ConnectionAPI(BaseModule):
             if hasattr(self.redis_manager, 'close'):
                 self.redis_manager.close()
                 
-            custom_log("ConnectionAPI module disposed successfully")
+            custom_log("CommunicationsModule module disposed successfully")
         except Exception as e:
-            self.logger.error(f"Error disposing ConnectionAPI: {e}")
+            self.logger.error(f"Error disposing CommunicationsModule: {e}") 
 
-    # API Key Management Methods
-    def generate_api_key(self):
-        """Generate a new API key for an external app."""
-        try:
-            data = request.get_json()
-            
-            # Validate required fields
-            required_fields = ['app_id', 'app_name']
-            for field in required_fields:
-                if not data.get(field):
-                    return jsonify({
-                        'success': False,
-                        'error': f'Missing required field: {field}'
-                    }), 400
-            
-            app_id = data['app_id']
-            app_name = data['app_name']
-            permissions = data.get('permissions', ['read', 'write'])
-            
-            # Generate API key
-            api_key = self.api_key_manager.generate_api_key(app_id, app_name, permissions)
-            
-            return jsonify({
-                'success': True,
-                'api_key': api_key,
-                'app_id': app_id,
-                'app_name': app_name,
-                'permissions': permissions
-            }), 201
-            
-        except Exception as e:
-            custom_log(f"❌ Error generating API key: {e}", level="ERROR")
-            return jsonify({
-                'success': False,
-                'error': f'Failed to generate API key: {str(e)}'
-            }), 500
-
-    def validate_api_key(self):
-        """Validate an API key."""
-        try:
-            data = request.get_json()
-            
-            if not data.get('api_key'):
-                return jsonify({
-                    'success': False,
-                    'error': 'API key required'
-                }), 400
-            
-            api_key = data['api_key']
-            key_data = self.api_key_manager.validate_api_key(api_key)
-            
-            if key_data:
-                return jsonify({
-                    'success': True,
-                    'valid': True,
-                    'app_id': key_data.get('app_id'),
-                    'app_name': key_data.get('app_name'),
-                    'permissions': key_data.get('permissions'),
-                    'is_active': key_data.get('is_active')
-                }), 200
-            else:
-                return jsonify({
-                    'success': True,
-                    'valid': False,
-                    'error': 'Invalid or expired API key'
-                }), 200
-            
-        except Exception as e:
-            custom_log(f"❌ Error validating API key: {e}", level="ERROR")
-            return jsonify({
-                'success': False,
-                'error': f'Failed to validate API key: {str(e)}'
-            }), 500
-
-    def revoke_api_key(self):
-        """Revoke an API key."""
-        try:
-            data = request.get_json()
-            
-            if not data.get('api_key'):
-                return jsonify({
-                    'success': False,
-                    'error': 'API key required'
-                }), 400
-            
-            api_key = data['api_key']
-            success = self.api_key_manager.revoke_api_key(api_key)
-            
-            if success:
-                return jsonify({
-                    'success': True,
-                    'message': 'API key revoked successfully'
-                }), 200
-            else:
-                return jsonify({
-                    'success': False,
-                    'error': 'Failed to revoke API key'
-                }), 400
-            
-        except Exception as e:
-            custom_log(f"❌ Error revoking API key: {e}", level="ERROR")
-            return jsonify({
-                'success': False,
-                'error': f'Failed to revoke API key: {str(e)}'
-            }), 500
-
-    def list_api_keys(self):
-        """List all API keys (admin only)."""
-        try:
-            keys = self.api_key_manager.list_api_keys()
-            
-            return jsonify({
-                'success': True,
-                'api_keys': keys,
-                'count': len(keys)
-            }), 200
-            
-        except Exception as e:
-            custom_log(f"❌ Error listing API keys: {e}", level="ERROR")
-            return jsonify({
-                'success': False,
-                'error': f'Failed to list API keys: {str(e)}'
-            }), 500
-
-    def list_stored_api_keys(self):
-        """List all API keys stored in secret files."""
-        try:
-            stored_keys = self.api_key_manager.list_stored_api_keys()
-            
-            return jsonify({
-                'success': True,
-                'stored_api_keys': stored_keys,
-                'count': len(stored_keys)
-            }), 200
-            
-        except Exception as e:
-            custom_log(f"❌ Error listing stored API keys: {e}", level="ERROR")
-            return jsonify({
-                'success': False,
-                'error': f'Failed to list stored API keys: {str(e)}'
-            }), 500
-
-    def ensure_external_app_api_key(self):
-        """Ensure the external app has an API key, generate if needed."""
-        try:
-            # Check if external app API key exists
-            if not Config.CREDIT_SYSTEM_API_KEY or Config.CREDIT_SYSTEM_API_KEY == "":
-                custom_log("🔄 External app API key not found, generating...")
-                
-                # Generate API key for external app
-                api_key = self.generate_external_app_api_key()
-                
-                if api_key:
-                    # Set the API key in config
-                    Config.set_credit_system_api_key(api_key)
-                    custom_log("✅ External app API key generated and configured")
-                else:
-                    custom_log("⚠️ Failed to generate external app API key")
-            else:
-                custom_log("✅ External app API key already configured")
-                
-        except Exception as e:
-            custom_log(f"❌ Error ensuring external app API key: {e}")
-
-    def generate_external_app_api_key(self):
-        """Generate API key specifically for this external app."""
-        try:
-            # Use the APIKeyGenerator to get API key from credit system
-            from core.managers.api_key_generator import APIKeyGenerator
-            generator = APIKeyGenerator()
-            api_key = generator.generate_app_api_key()
-            
-            if api_key:
-                # Save the API key using the API key manager
-                from core.managers.api_key_manager import APIKeyManager
-                api_key_manager = APIKeyManager()
-                api_key_manager.save_credit_system_api_key(api_key)
-                
-                custom_log(f"✅ Generated and saved API key for external app: {api_key[:16]}...")
-                return api_key
-            else:
-                custom_log("❌ Failed to generate API key from credit system")
-                return None
-            
-        except Exception as e:
-            custom_log(f"❌ Error generating external app API key: {e}")
-            return None
-
-    def request_api_key_from_credit_system(self):
-        """Request a new API key from the credit system."""
-        try:
-            # Use the APIKeyGenerator to get API key from credit system
-            from core.managers.api_key_generator import APIKeyGenerator
-            generator = APIKeyGenerator()
-            api_key = generator.generate_app_api_key()
-            
-            if api_key:
-                # Save the API key using the API key manager
-                from core.managers.api_key_manager import APIKeyManager
-                api_key_manager = APIKeyManager()
-                api_key_manager.save_credit_system_api_key(api_key)
-                
-                custom_log(f"✅ Generated and saved API key for external app: {api_key[:16]}...")
-                return jsonify({
-                    'success': True,
-                    'api_key': api_key
-                }), 201
-            else:
-                custom_log("❌ Failed to generate API key from credit system")
-                return jsonify({
-                    'success': False,
-                    'error': 'Failed to generate API key from credit system'
-                }), 500
-                
-        except Exception as e:
-            custom_log(f"❌ Error requesting API key from credit system: {e}")
-            return jsonify({
-                'success': False,
-                'error': f'Failed to request API key: {str(e)}'
-            }), 500 
+ 

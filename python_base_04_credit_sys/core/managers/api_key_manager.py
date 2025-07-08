@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional, List
 from tools.logger.custom_logging import custom_log
 from utils.config.config import Config
 from core.managers.redis_manager import RedisManager
+from flask import request, jsonify
 
 
 class APIKeyManager:
@@ -419,6 +420,161 @@ class APIKeyManager:
         except Exception as e:
             custom_log(f"❌ Error getting app by API key: {e}", level="ERROR")
             return None
+
+    # HTTP Endpoint Methods
+    def generate_api_key_endpoint(self):
+        """HTTP endpoint for API key generation."""
+        try:
+            data = request.get_json()
+            
+            # Validate required fields
+            required_fields = ['app_id', 'app_name']
+            for field in required_fields:
+                if not data.get(field):
+                    return jsonify({
+                        'success': False,
+                        'error': f'Missing required field: {field}'
+                    }), 400
+            
+            app_id = data['app_id']
+            app_name = data['app_name']
+            permissions = data.get('permissions', ['read', 'write'])
+            
+            # Check if API key already exists for this app
+            existing_api_key = self.get_api_key_for_app(app_id)
+            if existing_api_key:
+                custom_log(f"✅ API key already exists for app: {app_name} ({app_id})")
+                return jsonify({
+                    'success': True,
+                    'api_key': existing_api_key,
+                    'app_id': app_id,
+                    'app_name': app_name,
+                    'permissions': permissions,
+                    'message': 'API key already exists'
+                }), 200
+            
+            # Generate new API key
+            api_key = self.generate_api_key(app_id, app_name, permissions)
+            
+            return jsonify({
+                'success': True,
+                'api_key': api_key,
+                'app_id': app_id,
+                'app_name': app_name,
+                'permissions': permissions
+            }), 201
+            
+        except Exception as e:
+            custom_log(f"❌ Error generating API key: {e}", level="ERROR")
+            return jsonify({
+                'success': False,
+                'error': f'Failed to generate API key: {str(e)}'
+            }), 500
+
+    def validate_api_key_endpoint(self):
+        """HTTP endpoint for API key validation."""
+        try:
+            data = request.get_json()
+            
+            if not data.get('api_key'):
+                return jsonify({
+                    'success': False,
+                    'error': 'API key required'
+                }), 400
+            
+            api_key = data['api_key']
+            key_data = self.validate_api_key(api_key)
+            
+            if key_data:
+                return jsonify({
+                    'success': True,
+                    'valid': True,
+                    'app_id': key_data.get('app_id'),
+                    'app_name': key_data.get('app_name'),
+                    'permissions': key_data.get('permissions'),
+                    'is_active': key_data.get('is_active')
+                }), 200
+            else:
+                return jsonify({
+                    'success': True,
+                    'valid': False,
+                    'error': 'Invalid or expired API key'
+                }), 200
+            
+        except Exception as e:
+            custom_log(f"❌ Error validating API key: {e}", level="ERROR")
+            return jsonify({
+                'success': False,
+                'error': f'Failed to validate API key: {str(e)}'
+            }), 500
+
+    def revoke_api_key_endpoint(self):
+        """HTTP endpoint for API key revocation."""
+        try:
+            data = request.get_json()
+            
+            if not data.get('api_key'):
+                return jsonify({
+                    'success': False,
+                    'error': 'API key required'
+                }), 400
+            
+            api_key = data['api_key']
+            success = self.revoke_api_key(api_key)
+            
+            if success:
+                return jsonify({
+                    'success': True,
+                    'message': 'API key revoked successfully'
+                }), 200
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': 'Failed to revoke API key'
+                }), 400
+            
+        except Exception as e:
+            custom_log(f"❌ Error revoking API key: {e}", level="ERROR")
+            return jsonify({
+                'success': False,
+                'error': f'Failed to revoke API key: {str(e)}'
+            }), 500
+
+    def list_api_keys_endpoint(self):
+        """HTTP endpoint for listing all API keys (admin only)."""
+        try:
+            keys = self.list_api_keys()
+            
+            return jsonify({
+                'success': True,
+                'api_keys': keys,
+                'count': len(keys)
+            }), 200
+            
+        except Exception as e:
+            custom_log(f"❌ Error listing API keys: {e}", level="ERROR")
+            return jsonify({
+                'success': False,
+                'error': f'Failed to list API keys: {str(e)}'
+            }), 500
+
+    def list_stored_api_keys_endpoint(self):
+        """HTTP endpoint for listing all API keys stored in secret files."""
+        try:
+            stored_keys = self.list_stored_api_keys()
+            
+            return jsonify({
+                'success': True,
+                'stored_api_keys': stored_keys,
+                'count': len(stored_keys)
+            }), 200
+            
+        except Exception as e:
+            custom_log(f"❌ Error listing stored API keys: {e}", level="ERROR")
+            return jsonify({
+                'success': False,
+                'error': f'Failed to list stored API keys: {str(e)}'
+            }), 500
 
     def health_check(self) -> Dict[str, Any]:
         """Perform health check for API Key Manager."""
