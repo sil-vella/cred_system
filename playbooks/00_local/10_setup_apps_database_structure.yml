@@ -3,15 +3,15 @@
   hosts: localhost
   connection: local
   vars:
-    mongodb_container_name: "credit_system_mongodb"
-    database_name: "credit_system"
-    app_user: "credit_app_user"
+    mongodb_container_name: "external_app_mongodb"
+    database_name: "external_system"
+    app_user: "external_app_user"
     app_password: "6R3jjsvVhIRP20zMiHdkBzNKx"
     
     # MongoDB connection details for Docker
     mongodb_host: "localhost"
     mongodb_port: "27017"
-    mongodb_auth_db: "credit_system"
+    mongodb_auth_db: "external_system"
 
   tasks:
     - name: Wait for MongoDB container to be ready
@@ -25,7 +25,7 @@
     - name: Empty database completely
       shell: |
         docker exec {{ mongodb_container_name }} mongosh -u {{ app_user }} -p "{{ app_password }}" --authenticationDatabase {{ mongodb_auth_db }} --eval "
-          db = db.getSiblingDB('credit_system');
+          db = db.getSiblingDB('external_system');
           print('🗑️ Emptying database completely...');
           
           // Get all collection names
@@ -57,8 +57,8 @@
           // MongoDB Database Structure Setup Script
           // Modular Credit System Database - Basic User Structure
           
-          // Switch to the credit_system database
-          db = db.getSiblingDB('credit_system');
+          // Switch to the external_system database
+          db = db.getSiblingDB('external_system');
           
           print("🗄️ Setting up Modular Credit System Database Structure...");
           
@@ -399,7 +399,7 @@
     - name: Verify database collections
       shell: |
         docker exec {{ mongodb_container_name }} mongosh -u {{ app_user }} -p "{{ app_password }}" --authenticationDatabase {{ mongodb_auth_db }} --eval "
-          db = db.getSiblingDB('credit_system');
+          db = db.getSiblingDB('external_system');
           print('\\n📋 COLLECTION SUMMARY:');
           print('=====================');
           db.getCollectionNames().forEach(function(collection) {

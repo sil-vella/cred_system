@@ -355,9 +355,9 @@ class Config:
     MONGODB_SERVICE_NAME = get_config_value("flask-app/mongodb", "service_name", "mongodb_service_name", "MONGODB_SERVICE_NAME", "mongodb")
     MONGODB_ROOT_USER = get_config_value("flask-app/mongodb", "root_user", "mongodb_root_user", "MONGODB_ROOT_USER", "root")
     MONGODB_ROOT_PASSWORD = get_sensitive_config_value("flask-app/mongodb", "root_password", "mongodb_root_password", "MONGODB_ROOT_PASSWORD", "rootpassword")
-    MONGODB_USER = get_config_value("flask-app/mongodb", "user", "mongodb_user", "MONGODB_USER", "credit_system_user")
-    MONGODB_PASSWORD = get_sensitive_config_value("flask-app/mongodb", "user_password", "mongodb_user_password", "MONGODB_PASSWORD", "credit_system_password")
-    MONGODB_DB_NAME = get_config_value("flask-app/mongodb", "database_name", "mongodb_db_name", "MONGODB_DB_NAME", "credit_system")
+    MONGODB_USER = get_config_value("flask-app/mongodb", "user", "mongodb_user", "MONGODB_USER", "external_app_user")
+    MONGODB_PASSWORD = get_sensitive_config_value("flask-app/mongodb", "user_password", "mongodb_user_password", "MONGODB_PASSWORD", "external_app_password")
+    MONGODB_DB_NAME = get_config_value("flask-app/mongodb", "database_name", "mongodb_db_name", "MONGODB_DB_NAME", "external_system")
     MONGODB_PORT = int(get_config_value("flask-app/mongodb", "port", "mongodb_port", "MONGODB_PORT", "27017"))
 
     # Redis Configuration

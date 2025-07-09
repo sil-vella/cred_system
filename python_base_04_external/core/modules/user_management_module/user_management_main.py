@@ -9,8 +9,6 @@ from typing import Dict, Any
 from bson import ObjectId
 import bcrypt
 import re
-import requests
-from utils.config.config import Config
 
 
 class UserManagementModule(BaseModule):
@@ -32,11 +30,6 @@ class UserManagementModule(BaseModule):
             self.analytics_db = DatabaseManager(role="read_only")
             self.redis_manager = RedisManager()
         
-        # Credit system configuration
-        self.credit_system_url = Config.CREDIT_SYSTEM_URL
-        # Use dynamic API key getter that generates if empty
-        self.api_key = Config.get_credit_system_api_key()
-        
         custom_log("UserManagementModule created with shared managers")
 
     def initialize(self, app_manager):
@@ -49,136 +42,23 @@ class UserManagementModule(BaseModule):
         custom_log("UserManagementModule initialized")
 
     def register_routes(self):
-        """Register wildcard routes that capture all user-related requests."""
-        # Base routes for when no subpath is provided
-        self._register_route_helper("/users", self.forward_user_request, methods=["GET", "POST", "PUT", "DELETE"])
-        self._register_route_helper("/auth/users", self.forward_user_request, methods=["GET", "POST", "PUT", "DELETE"])
+        """Register user management routes."""
+        # User CRUD operations
+        # User CRUD operations
+        self._register_route_helper("/users/create", self.create_user, methods=["POST"])
+        self._register_route_helper("/users/<user_id>", self.get_user, methods=["GET"])
+        self._register_route_helper("/users/search", self.search_users, methods=["POST"])
         
-        # Wildcard routes for subpaths
-        self._register_route_helper("/users/<path:subpath>", self.forward_user_request, methods=["GET", "POST", "PUT", "DELETE"])
-        self._register_route_helper("/auth/users/<path:subpath>", self.forward_user_request, methods=["GET", "POST", "PUT", "DELETE"])
+        # Authentication routes
+        self._register_route_helper("/auth/login", self.login_user, methods=["POST"])
+        self._register_route_helper("/auth/logout", self.logout_user, methods=["POST"])
+        self._register_route_helper("/auth/refresh", self.refresh_token, methods=["POST"])
+        self._register_route_helper("/auth/me", self.get_current_user, methods=["GET"])
         
         # Test endpoint for debugging
         self._register_route_helper("/auth/test", self.test_debug, methods=["GET"])
         
-        custom_log(f"UserManagementModule registered 4 routes for user forwarding")
-
-    def forward_user_request(self, subpath=None):
-        """Forward user management requests to credit system with API key."""
-        try:
-            # Get the current request path and method
-            path = request.path
-            method = request.method
-            
-            # Build the target path on credit system
-            # Use subpath parameter when available (for wildcard routes), otherwise use full path
-            if subpath is not None:
-                # For wildcard routes like /users/<path:subpath>
-                # Reconstruct the full path to determine the target
-                if path.startswith('/users/'):
-                    target_path = f"/users/{subpath}"
-                elif path.startswith('/auth/users/'):
-                    target_path = f"/auth/{subpath}"
-                else:
-                    target_path = path  # Fallback
-            else:
-                # For base routes like /users (no subpath)
-                target_path = self._build_credit_system_path(path)
-            
-            # Prepare headers with API key
-            headers = {
-                'X-API-Key': self.api_key,
-                'Content-Type': 'application/json'
-            }
-            
-            # Forward any existing Authorization header (JWT tokens)
-            auth_header = request.headers.get('Authorization')
-            if auth_header:
-                headers['Authorization'] = auth_header
-            
-            # Prepare request data
-            data = None
-            if method in ['POST', 'PUT']:
-                data = request.get_json()
-            
-            # Build target URL
-            target_url = f"{self.credit_system_url}{target_path}"
-            
-            custom_log(f"🔄 Forwarding {method} request to credit system: {target_url}")
-            custom_log(f"🔄 Original path: {path}")
-            custom_log(f"🔄 Target path: {target_path}")
-            custom_log(f"🔄 Subpath parameter: {subpath}")
-            custom_log(f"🔄 Headers: {headers}")
-            if data:
-                custom_log(f"🔄 Data: {data}")
-            
-            # Make request to credit system
-            response = requests.request(
-                method=method,
-                url=target_url,
-                headers=headers,
-                json=data if data else None,
-                timeout=30
-            )
-            
-            # Forward the response back to the client
-            response_data = response.json() if response.content else {}
-            status_code = response.status_code
-            
-            custom_log(f"✅ Credit system response: {status_code} - {response_data}")
-            
-            return jsonify(response_data), status_code
-            
-        except requests.exceptions.RequestException as e:
-            custom_log(f"❌ Error forwarding request to credit system: {e}")
-            return jsonify({
-                "success": False,
-                "error": "Credit system unavailable",
-                "message": "Unable to connect to credit system"
-            }), 503
-            
-        except Exception as e:
-            custom_log(f"❌ Unexpected error in forward_user_request: {e}")
-            return jsonify({
-                "success": False,
-                "error": "Internal server error",
-                "message": "Failed to process request"
-            }), 500
-
-    def _build_credit_system_path(self, external_path):
-        """Build the target path for credit system based on external app path."""
-        # Remove leading slash and split path
-        path_parts = external_path.strip('/').split('/')
-        
-        if len(path_parts) < 1:
-            return external_path  # Return as-is if invalid path
-        
-        # Handle /users/* paths
-        if path_parts[0] == 'users':
-            # Forward /users to /users (let credit system handle it)
-            # Forward /users/create to /users/create
-            # Forward /users/123 to /users/123
-            # Forward /users/123/profile to /users/123/profile
-            return f"/{'/'.join(path_parts)}"
-        
-        # Handle /auth/users/* paths
-        elif path_parts[0] == 'auth' and len(path_parts) > 1 and path_parts[1] == 'users':
-            # Forward /auth/users/login to /auth/login
-            # Forward /auth/users/logout to /auth/logout
-            # Forward /auth/users/123 to /auth/123
-            # Forward /auth/users/me to /auth/me
-            if len(path_parts) == 3:
-                # /auth/users/login -> /auth/login
-                return f"/auth/{path_parts[2]}"
-            elif len(path_parts) == 4:
-                # /auth/users/123/profile -> /auth/123/profile
-                return f"/auth/{path_parts[2]}/{path_parts[3]}"
-            else:
-                # Fallback for complex paths
-                return f"/auth/{'/'.join(path_parts[2:])}"
-        
-        # Return original path if no mapping found
-        return external_path
+        custom_log(f"UserManagementModule registered {len(self.registered_routes)} routes")
 
     def initialize_database(self):
         """Verify database connection for user operations."""
@@ -195,35 +75,634 @@ class UserManagementModule(BaseModule):
             custom_log(f"⚠️ User database connection verification failed: {e}")
             custom_log("⚠️ User operations will be limited - suitable for local development")
 
+    def create_user(self):
+        """Create a new user with queued database operation."""
+        try:
+            data = request.get_json()
+            email = data.get('email')
+            username = data.get('username')
+            password = data.get('password')
+            
+            if not all([email, username, password]):
+                return jsonify({'error': 'email, username, and password are required'}), 400
+            
+            # Check if user already exists using queue system
+            existing_user = self.db_manager.find_one("users", {"email": email})
+            if existing_user:
+                return jsonify({'error': 'User with this email already exists'}), 409
+            
+            # Hash password
+            hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+            
+            # Get current timestamp for consistent date formatting
+            current_time = datetime.utcnow()
+            
+            # Prepare user data with modular structure
+            user_data = {
+                # Core fields
+                'email': email,
+                'username': username,
+                'password': hashed_password.decode('utf-8'),
+                'status': 'active',
+                'created_at': current_time,
+                'updated_at': current_time,
+                
+                # Profile section
+                'profile': {
+                    'first_name': data.get('first_name', ''),
+                    'last_name': data.get('last_name', ''),
+                    'phone': data.get('phone', ''),
+                    'timezone': data.get('timezone', 'UTC'),
+                    'language': data.get('language', 'en')
+                },
+                
+                # Preferences section
+                'preferences': {
+                    'notifications': {
+                        'email': data.get('notifications_email', True),
+                        'sms': data.get('notifications_sms', False),
+                        'push': data.get('notifications_push', True)
+                    },
+                    'privacy': {
+                        'profile_visible': data.get('profile_visible', True),
+                        'activity_visible': data.get('activity_visible', False)
+                    }
+                },
+                
+                # Modules section with default configurations
+                'modules': {
+                    'wallet': {
+                        'enabled': True,
+                        'balance': 0,
+                        'currency': 'credits',
+                        'last_updated': current_time
+                    },
+                    'subscription': {
+                        'enabled': False,
+                        'plan': None,
+                        'expires_at': None
+                    },
+                    'referrals': {
+                        'enabled': True,
+                        'referral_code': f"{username.upper()}{current_time.strftime('%Y%m')}",
+                        'referrals_count': 0
+                    }
+                },
+                
+                # Audit section
+                'audit': {
+                    'last_login': None,
+                    'login_count': 0,
+                    'password_changed_at': current_time,
+                    'profile_updated_at': current_time
+                }
+            }
+            
+            # Insert user using queue system
+            user_id = self.db_manager.insert("users", user_data)
+            
+            if user_id:
+                # Remove password from response
+                user_data.pop('password', None)
+                user_data['_id'] = user_id
+                
+                # Convert datetime objects to ISO format for JSON response
+                response_data = self._prepare_user_response(user_data)
+                
+                return jsonify({
+                    'message': 'User created successfully',
+                    'user': response_data,
+                    'status': 'created'
+                }), 201
+            else:
+                return jsonify({'error': 'Failed to create user'}), 500
+            
+        except Exception as e:
+            custom_log(f"Error creating user: {e}")
+            return jsonify({'error': 'Failed to create user'}), 500
+
+    def get_user(self, user_id):
+        """Get user by ID with queued operation."""
+        try:
+            user = self.analytics_db.find_one("users", {"_id": user_id})
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+            
+            # Remove password from response
+            user.pop('password', None)
+            return jsonify(user), 200
+            
+        except Exception as e:
+            custom_log(f"Error getting user: {e}")
+            return jsonify({'error': 'Failed to get user'}), 500
+
+    def update_user(self, user_id):
+        """Update user information with queued operation."""
+        try:
+            data = request.get_json()
+            update_data = {'updated_at': datetime.utcnow().isoformat()}
+            
+            # Only update allowed fields
+            allowed_fields = ['username', 'email', 'status']
+            for field in allowed_fields:
+                if field in data:
+                    update_data[field] = data[field]
+            
+            # Update user using queue system
+            modified_count = self.db_manager.update("users", {"_id": user_id}, {"$set": update_data})
+            
+            if modified_count > 0:
+                return jsonify({
+                    'message': 'User updated successfully',
+                    'user_id': user_id,
+                    'status': 'updated'
+                }), 200
+            else:
+                return jsonify({'error': 'User not found or no changes made'}), 404
+                
+        except Exception as e:
+            custom_log(f"Error updating user: {e}")
+            return jsonify({'error': 'Failed to update user'}), 500
+
+    def delete_user(self, user_id):
+        """Delete a user with queued operation."""
+        try:
+            # Delete user using queue system
+            deleted_count = self.db_manager.delete("users", {"_id": user_id})
+            
+            if deleted_count > 0:
+                return jsonify({
+                    'message': 'User deleted successfully',
+                    'user_id': user_id,
+                    'status': 'deleted'
+                }), 200
+            else:
+                return jsonify({'error': 'User not found'}), 404
+                
+        except Exception as e:
+            custom_log(f"Error deleting user: {e}")
+            return jsonify({'error': 'Failed to delete user'}), 500
+
+    def search_users(self):
+        """Search users with filters using queued operation."""
+        try:
+            data = request.get_json()
+            query = {}
+            
+            if 'username' in data:
+                query['username'] = {'$regex': data['username'], '$options': 'i'}
+            if 'email' in data:
+                query['email'] = {'$regex': data['email'], '$options': 'i'}
+            if 'status' in data:
+                query['status'] = data['status']
+            
+            # Search users using queue system
+            users = self.analytics_db.find("users", query)
+            
+            # Remove passwords from response
+            for user in users:
+                user.pop('password', None)
+            
+            return jsonify({'users': users}), 200
+            
+        except Exception as e:
+            custom_log(f"Error searching users: {e}")
+            return jsonify({'error': 'Failed to search users'}), 500
+
+    # Authentication Methods
+    def register_user(self):
+        """Register a new user account with authentication setup."""
+        try:
+            data = request.get_json()
+            
+            # Validate required fields
+            required_fields = ["username", "email", "password"]
+            for field in required_fields:
+                if not data.get(field):
+                    return jsonify({
+                        "success": False,
+                        "error": f"Missing required field: {field}"
+                    }), 400
+            
+            username = data.get("username")
+            email = data.get("email")
+            password = data.get("password")
+            
+            # Validate email format
+            if not self._is_valid_email(email):
+                return jsonify({
+                    "success": False,
+                    "error": "Invalid email format"
+                }), 400
+            
+            # Validate password strength
+            if not self._is_valid_password(password):
+                return jsonify({
+                    "success": False,
+                    "error": "Password must be at least 8 characters long"
+                }), 400
+            
+            # Check if user already exists
+            existing_user = self.db_manager.find_one("users", {"email": email})
+            if existing_user:
+                return jsonify({
+                    "success": False,
+                    "error": "User with this email already exists"
+                }), 409
+            
+            existing_username = self.db_manager.find_one("users", {"username": username})
+            if existing_username:
+                return jsonify({
+                    "success": False,
+                    "error": "Username already taken"
+                }), 409
+            
+            # Hash password
+            hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+            
+            # Prepare user data
+            user_data = {
+                'username': username,
+                'email': email,
+                'password': hashed_password.decode('utf-8'),
+                'created_at': datetime.utcnow().isoformat(),
+                'updated_at': datetime.utcnow().isoformat(),
+                'status': 'active',
+                'last_login': None,
+                'login_count': 0
+            }
+            
+            print(f"[DEBUG] Registering user: {email}")
+            print(f"[DEBUG] Using db_manager: {self.db_manager}")
+            print(f"[DEBUG] User data prepared: {user_data}")
+            
+            # Insert user using database manager
+            user_id = self.db_manager.insert("users", user_data)
+            
+            print(f"[DEBUG] User inserted with ID: {user_id}")
+            
+            if not user_id:
+                return jsonify({
+                    "success": False,
+                    "error": "Failed to create user account"
+                }), 500
+            
+            # Create initial wallet for user
+            wallet_data = {
+                'user_id': user_id,
+                'balance': 0.0,
+                'currency': 'USD',
+                'created_at': datetime.utcnow().isoformat(),
+                'updated_at': datetime.utcnow().isoformat(),
+                'status': 'active'
+            }
+            
+            wallet_id = self.db_manager.insert("wallets", wallet_data)
+            
+            # Remove password from response
+            user_data.pop('password', None)
+            user_data['_id'] = user_id
+            
+            custom_log(f"✅ User registered successfully: {username} ({email})")
+            
+            return jsonify({
+                "success": True,
+                "message": "User registered successfully",
+                "data": {
+                    "user": user_data,
+                    "wallet_id": wallet_id
+                }
+            }), 201
+            
+        except Exception as e:
+            custom_log(f"❌ Error registering user: {e}")
+            return jsonify({
+                "success": False,
+                "error": "Internal server error"
+            }), 500
+
+    def login_user(self):
+        """Authenticate user and return JWT tokens."""
+        try:
+            data = request.get_json()
+            
+            # Validate required fields
+            if not data.get("email") or not data.get("password"):
+                return jsonify({
+                    "success": False,
+                    "error": "Email and password are required"
+                }), 400
+            
+            email = data.get("email")
+            password = data.get("password")
+            
+            # Find user by email using direct query (more efficient)
+            custom_log(f"[DEBUG] Login attempt for {email}")
+            custom_log(f"[DEBUG] Using db_manager: {self.db_manager}")
+            custom_log(f"[DEBUG] Database available: {self.db_manager.available}")
+            
+            # Use direct email query instead of fetching all users
+            user = self.db_manager.find_one("users", {"email": email})
+            custom_log(f"[DEBUG] User lookup result: {'Found' if user else 'Not found'}")
+            
+            if not user:
+                custom_log(f"[DEBUG] No user found for email: {email}")
+                return jsonify({
+                    "success": False,
+                    "error": "Invalid email or password"
+                }), 401
+            
+            # Check if user is active
+            if user.get("status") != "active":
+                return jsonify({
+                    "success": False,
+                    "error": "Account is not active"
+                }), 401
+            
+            # Verify password
+            stored_password = user.get("password", "")
+            custom_log(f"[DEBUG] Password verification for user: {user.get('username')}")
+            try:
+                check_result = bcrypt.checkpw(password.encode('utf-8'), stored_password.encode('utf-8'))
+            except Exception as e:
+                custom_log(f"[DEBUG] bcrypt.checkpw error: {e}")
+                check_result = False
+            
+            if not check_result:
+                custom_log(f"[DEBUG] Password verification failed for user: {user.get('username')}")
+                return jsonify({
+                    "success": False,
+                    "error": "Invalid email or password"
+                }), 401
+            
+            # Update last login and login count using queue system
+            update_data = {
+                "last_login": datetime.utcnow().isoformat(),
+                "login_count": user.get("login_count", 0) + 1,
+                "updated_at": datetime.utcnow().isoformat()
+            }
+            
+            self.db_manager.update("users", {"_id": user["_id"]}, update_data)
+            
+            # Create JWT tokens
+            access_token_payload = {
+                'user_id': str(user['_id']),
+                'username': user['username'],
+                'email': user['email'],
+                'type': 'access'
+            }
+            
+            refresh_token_payload = {
+                'user_id': str(user['_id']),
+                'type': 'refresh'
+            }
+            
+            # Get JWT manager from app_manager
+            jwt_manager = self.app_manager.jwt_manager
+            access_token = jwt_manager.create_token(access_token_payload, TokenType.ACCESS)
+            refresh_token = jwt_manager.create_token(refresh_token_payload, TokenType.REFRESH)
+            
+            # Remove password from response
+            user.pop('password', None)
+            
+            custom_log(f"✅ User logged in successfully: {user['username']} ({email})")
+            
+            return jsonify({
+                "success": True,
+                "message": "Login successful",
+                "data": {
+                    "user": user,
+                    "access_token": access_token,
+                    "refresh_token": refresh_token,
+                    "token_type": "Bearer",
+                    "expires_in": 1800  # 30 minutes
+                }
+            }), 200
+            
+        except Exception as e:
+            custom_log(f"❌ Error during login: {e}")
+            return jsonify({
+                "success": False,
+                "error": "Internal server error"
+            }), 500
+
+    def logout_user(self):
+        """Logout user and revoke tokens."""
+        try:
+            # Get token from Authorization header
+            auth_header = request.headers.get('Authorization')
+            if not auth_header or not auth_header.startswith('Bearer '):
+                return jsonify({
+                    "success": False,
+                    "error": "Missing or invalid authorization header"
+                }), 401
+            
+            token = auth_header.split(' ')[1]
+            
+            # Get JWT manager from app_manager
+            jwt_manager = self.app_manager.jwt_manager
+            
+            # Verify token
+            payload = jwt_manager.verify_token(token, TokenType.ACCESS)
+            if not payload:
+                return jsonify({
+                    "success": False,
+                    "error": "Invalid or expired token"
+                }), 401
+            
+            # Revoke the token
+            success = jwt_manager.revoke_token(token)
+            
+            if success:
+                custom_log(f"✅ User logged out successfully: {payload.get('username', 'unknown')}")
+                return jsonify({
+                    "success": True,
+                    "message": "Logout successful"
+                }), 200
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": "Failed to logout"
+                }), 500
+            
+        except Exception as e:
+            custom_log(f"❌ Error during logout: {e}")
+            return jsonify({
+                "success": False,
+                "error": "Internal server error"
+            }), 500
+
+    def refresh_token(self):
+        """Refresh access token using refresh token."""
+        try:
+            data = request.get_json()
+            
+            if not data.get("refresh_token"):
+                return jsonify({
+                    "success": False,
+                    "error": "Refresh token is required"
+                }), 400
+            
+            refresh_token = data.get("refresh_token")
+            
+            # Get JWT manager from app_manager
+            jwt_manager = self.app_manager.jwt_manager
+            
+            # Verify refresh token
+            payload = jwt_manager.verify_token(refresh_token, TokenType.REFRESH)
+            if not payload:
+                return jsonify({
+                    "success": False,
+                    "error": "Invalid or expired refresh token"
+                }), 401
+            
+            # Get user data
+            user_id = payload.get("user_id")
+            user = self.db_manager.find_one("users", {"_id": ObjectId(user_id)})
+            
+            if not user:
+                return jsonify({
+                    "success": False,
+                    "error": "User not found"
+                }), 401
+            
+            # Create new access token
+            access_token_payload = {
+                'user_id': str(user['_id']),
+                'username': user['username'],
+                'email': user['email'],
+                'type': 'access'
+            }
+            
+            new_access_token = jwt_manager.create_token(access_token_payload, TokenType.ACCESS)
+            
+            # Remove password from response
+            user.pop('password', None)
+            
+            custom_log(f"✅ Token refreshed successfully for user: {user['username']}")
+            
+            return jsonify({
+                "success": True,
+                "message": "Token refreshed successfully",
+                "data": {
+                    "user": user,
+                    "access_token": new_access_token,
+                    "token_type": "Bearer",
+                    "expires_in": 1800  # 30 minutes
+                }
+            }), 200
+            
+        except Exception as e:
+            custom_log(f"❌ Error refreshing token: {e}")
+            return jsonify({
+                "success": False,
+                "error": "Internal server error"
+            }), 500
+
+    def get_current_user(self):
+        """Get current user information from token."""
+        try:
+            # Get token from Authorization header
+            auth_header = request.headers.get('Authorization')
+            if not auth_header or not auth_header.startswith('Bearer '):
+                return jsonify({
+                    "success": False,
+                    "error": "Missing or invalid authorization header"
+                }), 401
+            
+            token = auth_header.split(' ')[1]
+            
+            # Get JWT manager from app_manager
+            jwt_manager = self.app_manager.jwt_manager
+            
+            # Verify token
+            payload = jwt_manager.verify_token(token, TokenType.ACCESS)
+            if not payload:
+                return jsonify({
+                    "success": False,
+                    "error": "Invalid or expired token"
+                }), 401
+            
+            # Get user data
+            user_id = payload.get("user_id")
+            user = self.db_manager.find_one("users", {"_id": ObjectId(user_id)})
+            
+            if not user:
+                return jsonify({
+                    "success": False,
+                    "error": "User not found"
+                }), 401
+            
+            # Get user's wallet
+            wallet = self.db_manager.find_one("wallets", {"user_id": user_id})
+            
+            # Remove password from response
+            user.pop('password', None)
+            
+            return jsonify({
+                "success": True,
+                "data": {
+                    "user": user,
+                    "wallet": wallet
+                }
+            }), 200
+            
+        except Exception as e:
+            custom_log(f"❌ Error getting current user: {e}")
+            return jsonify({
+                "success": False,
+                "error": "Internal server error"
+            }), 500
+
+    def _prepare_user_response(self, user_data):
+        """Prepare user data for JSON response by converting datetime objects."""
+        import copy
+        response_data = copy.deepcopy(user_data)
+        
+        # Convert datetime objects to ISO format strings
+        datetime_fields = ['created_at', 'updated_at', 'last_login', 'password_changed_at', 'profile_updated_at']
+        
+        def convert_datetime(obj):
+            if isinstance(obj, dict):
+                for key, value in obj.items():
+                    if isinstance(value, datetime):
+                        obj[key] = value.isoformat()
+                    elif isinstance(value, dict):
+                        convert_datetime(value)
+            return obj
+        
+        # Convert main user data
+        response_data = convert_datetime(response_data)
+        
+        # Convert nested datetime fields
+        if 'modules' in response_data:
+            for module_name, module_data in response_data['modules'].items():
+                if isinstance(module_data, dict) and 'last_updated' in module_data:
+                    if isinstance(module_data['last_updated'], datetime):
+                        module_data['last_updated'] = module_data['last_updated'].isoformat()
+        
+        return response_data
+
+    def _is_valid_email(self, email: str) -> bool:
+        """Validate email format."""
+        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        return re.match(pattern, email) is not None
+
+    def _is_valid_password(self, password: str) -> bool:
+        """Validate password strength."""
+        return len(password) >= 8
+
     def test_debug(self):
         """Test endpoint to verify debug logging works."""
         print("[DEBUG] Test endpoint called!")
         print(f"[DEBUG] Database manager: {self.db_manager}")
         print(f"[DEBUG] Analytics DB: {self.analytics_db}")
-        print(f"[DEBUG] Credit system URL: {self.credit_system_url}")
-        print(f"[DEBUG] API key configured: {'Yes' if self.api_key else 'No'}")
-        return jsonify({
-            "message": "Debug test successful",
-            "credit_system_url": self.credit_system_url,
-            "api_key_configured": bool(self.api_key)
-        }), 200
+        return jsonify({"message": "Debug test successful"}), 200
 
     def health_check(self) -> Dict[str, Any]:
         """Perform health check for UserManagementModule."""
         health_status = super().health_check()
         health_status['dependencies'] = self.dependencies
-        
-        # Add credit system connection status
-        try:
-            # Test connection to credit system
-            response = requests.get(
-                f"{self.credit_system_url}/health",
-                headers={'X-API-Key': self.api_key},
-                timeout=5
-            )
-            credit_system_status = "healthy" if response.status_code == 200 else "unhealthy"
-        except Exception as e:
-            credit_system_status = f"error: {str(e)}"
         
         # Add database queue status
         try:
@@ -234,21 +713,10 @@ class UserManagementModule(BaseModule):
                     'worker_alive': queue_status['worker_alive'],
                     'queue_enabled': queue_status['queue_enabled'],
                     'pending_results': queue_status['pending_results']
-                },
-                'credit_system_connection': {
-                    'status': credit_system_status,
-                    'url': self.credit_system_url,
-                    'api_key_configured': bool(self.api_key)
                 }
             }
         except Exception as e:
-            health_status['details'] = {
-                'database_queue': f'error: {str(e)}',
-                'credit_system_connection': {
-                    'status': credit_system_status,
-                    'url': self.credit_system_url,
-                    'api_key_configured': bool(self.api_key)
-                }
-            }
+            health_status['details'] = {'database_queue': f'error: {str(e)}'}
         
         return health_status 
+

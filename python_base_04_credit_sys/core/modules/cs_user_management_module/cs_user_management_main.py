@@ -49,14 +49,6 @@ class CSUserManagementModule(BaseModule):
         self._register_route_helper("/users/<user_id>", self.get_user, methods=["GET"])
         self._register_route_helper("/users/search", self.search_users, methods=["POST"])
         
-        # Authentication routes
-        self._register_route_helper("/auth/login", self.login_user, methods=["POST"])
-        self._register_route_helper("/auth/logout", self.logout_user, methods=["POST"])
-        self._register_route_helper("/auth/refresh", self.refresh_token, methods=["POST"])
-        self._register_route_helper("/auth/<user_id>", self.update_user, methods=["PUT"])
-        self._register_route_helper("/auth/<user_id>", self.delete_user, methods=["DELETE"])
-        self._register_route_helper("/auth/me", self.get_current_user, methods=["GET"])
-        
         # Test endpoint for debugging
         self._register_route_helper("/auth/test", self.test_debug, methods=["GET"])
         
