@@ -201,21 +201,29 @@ class UserManagementModule(BaseModule):
                     "error": "Failed to create user account"
                 }), 500
             
-            # Create initial wallet for user
-            wallet_data = {
-                'user_id': user_id,
-                'balance': 0.0,
-                'currency': 'USD',
-                'created_at': current_time.isoformat(),
-                'updated_at': current_time.isoformat(),
-                'status': 'active'
-            }
-            
-            wallet_id = self.db_manager.insert("wallets", wallet_data)
-            
             # Remove password from response
             user_data.pop('password', None)
             user_data['_id'] = user_id
+            
+            # Trigger user_created hook for other modules to listen to
+            if self.app_manager:
+                # Import config to get app identification
+                from utils.config.config import Config
+                
+                hook_data = {
+                    'user_id': user_id,
+                    'username': username,
+                    'email': email,  # Raw email from request (non-encrypted)
+                    'user_data': user_data,
+                    'created_at': current_time.isoformat(),
+                    'app_id': Config.APP_ID,
+                    'app_name': Config.APP_NAME,
+                    'source': 'external_app'
+                }
+                self.app_manager.trigger_hook("user_created", hook_data)
+                custom_log(f"🎣 Triggered user_created hook for user: {username} ({email})")
+                custom_log(f"   - App: {Config.APP_NAME} ({Config.APP_ID})")
+                custom_log(f"   - User ID: {user_id}")
             
             custom_log(f"✅ User created successfully: {username} ({email})")
             
@@ -223,8 +231,7 @@ class UserManagementModule(BaseModule):
                 "success": True,
                 "message": "User created successfully",
                 "data": {
-                    "user": user_data,
-                    "wallet_id": wallet_id
+                    "user": user_data
                 }
             }), 201
             

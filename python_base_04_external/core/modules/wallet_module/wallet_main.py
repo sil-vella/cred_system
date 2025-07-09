@@ -16,8 +16,19 @@ class WalletModule(BaseModule):
         self.app_manager = app_manager
         self.app = app_manager.flask_app
         self.register_routes()
+        
+        # Register hooks for user events
+        self._register_hooks()
+        
         self._initialized = True
         custom_log("WalletModule initialized")
+
+    def _register_hooks(self):
+        """Register hooks for user-related events."""
+        if self.app_manager:
+            # Note: Wallet data is now embedded directly in user document during creation
+            # No need for separate wallet hook callback
+            custom_log("🎣 WalletModule: Wallet data embedded in user document - no hook callback needed")
 
     def register_routes(self):
         """Register wallet-related routes."""

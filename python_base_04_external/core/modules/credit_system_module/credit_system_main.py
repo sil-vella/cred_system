@@ -45,8 +45,148 @@ class CreditSystemModule(BaseModule):
         self.app = app_manager.flask_app
         self.initialize_database()
         self.register_routes()
+        
+        # Register hooks for user events
+        self._register_hooks()
+        
         self._initialized = True
         custom_log("CreditSystemModule initialized")
+
+    def _register_hooks(self):
+        """Register hooks for user-related events."""
+        if self.app_manager:
+            # Register callback for user creation
+            self.app_manager.register_hook_callback(
+                "user_created", 
+                self._on_user_created, 
+                priority=15, 
+                context="credit_system"
+            )
+            custom_log("🎣 CreditSystemModule registered user_created hook callback")
+
+    def _on_user_created(self, hook_data):
+        """Handle user creation event - forward to credit system."""
+        try:
+            user_id = hook_data.get('user_id')
+            username = hook_data.get('username')
+            email = hook_data.get('email')  # Raw email from request (non-encrypted)
+            user_data = hook_data.get('user_data', {})
+            app_id = hook_data.get('app_id')
+            app_name = hook_data.get('app_name')
+            source = hook_data.get('source', 'external_app')
+            
+            custom_log(f"🎣 CreditSystemModule: Processing user creation for {username} ({email})")
+            custom_log(f"   - Source App: {app_name} ({app_id})")
+            custom_log(f"   - User ID: {user_id}")
+            
+            # Prepare data for credit system with multi-tenant structure
+            credit_system_user_data = {
+                # Core user fields
+                'email': email,  # Raw email from request
+                'username': username,
+                'password': 'temporary_password_123',  # Credit system will generate proper password
+                'status': 'active',
+                
+                # Profile data from external app
+                'first_name': user_data.get('profile', {}).get('first_name', ''),
+                'last_name': user_data.get('profile', {}).get('last_name', ''),
+                'phone': user_data.get('profile', {}).get('phone', ''),
+                'timezone': user_data.get('profile', {}).get('timezone', 'UTC'),
+                'language': user_data.get('profile', {}).get('language', 'en'),
+                
+                # App-specific data for multi-tenant structure
+                'app_id': app_id,
+                'app_name': app_name,
+                'app_version': '1.0.0',
+                'app_username': username,  # App-specific username
+                'app_display_name': f"{user_data.get('profile', {}).get('first_name', '')} {user_data.get('profile', {}).get('last_name', '')}".strip() or username,
+                'nickname': username[:2].upper(),
+                'avatar_url': '',
+                'theme': 'auto',
+                'notifications_enabled': True,
+                'custom_fields': {
+                    'source': source,
+                    'external_user_id': str(user_id),
+                    'created_via': 'external_app'
+                },
+                
+                # App connection settings
+                'permissions': ['read', 'write', 'wallet_access'],
+                'sync_frequency': 'realtime',
+                'wallet_updates': True,
+                'profile_updates': True,
+                'transaction_history': True,
+                'requests_per_minute': 100,
+                'requests_per_hour': 1000
+            }
+            
+            # Forward user creation to credit system
+            try:
+                headers = {
+                    'X-API-Key': self.api_key,
+                    'Content-Type': 'application/json'
+                }
+                
+                target_url = f"{self.credit_system_url}/users/create"
+                
+                custom_log(f"🔄 Forwarding user creation to credit system: {target_url}")
+                custom_log(f"🔄 User data: {credit_system_user_data}")
+                
+                response = requests.post(
+                    url=target_url,
+                    headers=headers,
+                    json=credit_system_user_data,
+                    timeout=30
+                )
+                
+                if response.status_code == 200 or response.status_code == 201:
+                    response_data = response.json()
+                    custom_log(f"✅ CreditSystemModule: User {username} synced to credit system successfully")
+                    custom_log(f"   - Credit system response: {response_data}")
+                    
+                    # Create welcome notification in external app
+                    self._create_welcome_notification(user_id, username, email, app_name)
+                    
+                else:
+                    custom_log(f"⚠️ CreditSystemModule: User {username} sync failed - status {response.status_code}")
+                    custom_log(f"   - Response: {response.text}")
+                    
+            except requests.exceptions.RequestException as e:
+                custom_log(f"❌ CreditSystemModule: Failed to sync user {username} to credit system: {e}")
+            except Exception as e:
+                custom_log(f"❌ CreditSystemModule: Unexpected error syncing user {username}: {e}")
+                
+        except Exception as e:
+            custom_log(f"❌ CreditSystemModule: Error processing user creation hook: {e}")
+
+    def _create_welcome_notification(self, user_id, username, email, app_name):
+        """Create welcome notification for new user."""
+        try:
+            notification_data = {
+                'user_id': user_id,
+                'type': 'welcome',
+                'title': f'Welcome to {app_name}!',
+                'message': f'Hello {username}! Your account has been successfully created and synced with the credit system.',
+                'priority': 'normal',
+                'status': 'unread',
+                'created_at': datetime.utcnow().isoformat(),
+                'metadata': {
+                    'source': 'credit_system_module',
+                    'app_name': app_name,
+                    'email': email
+                }
+            }
+            
+            # Insert notification using database manager
+            notification_id = self.db_manager.insert("notifications", notification_data)
+            
+            if notification_id:
+                custom_log(f"✅ Welcome notification created for {username}: {notification_id}")
+            else:
+                custom_log(f"⚠️ Failed to create welcome notification for {username}")
+                
+        except Exception as e:
+            custom_log(f"❌ Error creating welcome notification for {username}: {e}")
 
     def register_routes(self):
         """Register wildcard routes that capture all user-related requests."""

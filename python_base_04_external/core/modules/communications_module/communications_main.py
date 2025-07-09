@@ -52,11 +52,21 @@ class CommunicationsModule(BaseModule):
         # Register routes
         self.register_routes()
         
+        # Register hooks for user events
+        self._register_hooks()
+        
         # Auto-generate API key for external app if needed (using unified manager)
         self.api_key_manager.ensure_external_app_api_key()
         
         # Mark as initialized
         self._initialized = True
+
+    def _register_hooks(self):
+        """Register hooks for user-related events."""
+        if self.app_manager:
+            # Note: Welcome notifications are now handled in CreditSystemModule callback
+            # No need for separate communications hook callback
+            custom_log("🎣 CommunicationsModule: Welcome notifications handled in CreditSystemModule - no hook callback needed")
 
     def register_routes(self):
         """Register all CommunicationsModule routes."""

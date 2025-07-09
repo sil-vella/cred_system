@@ -135,6 +135,9 @@ class AppManager:
         # Initialize services
         self.services_manager.initialize_services()
 
+        # Register common hooks before module initialization
+        self._register_common_hooks()
+
         # Initialize modules (replaces plugin system)
         custom_log("Initializing modules...")
         self.module_manager.initialize_modules(self)
@@ -495,6 +498,21 @@ class AppManager:
         # Set up periodic system metrics collection
         self._setup_system_metrics()
         
+    def _register_common_hooks(self):
+        """Register common hooks that modules can use."""
+        try:
+            # Register user_created hook
+            self.register_hook("user_created")
+            custom_log("✅ Registered common hook: user_created")
+            
+            # Add more common hooks here as needed
+            # self.register_hook("payment_processed")
+            # self.register_hook("user_login")
+            # self.register_hook("user_logout")
+            
+        except Exception as e:
+            custom_log(f"❌ Error registering common hooks: {e}", level="ERROR")
+
     def _setup_system_metrics(self):
         """Set up periodic collection of system metrics."""
         def update_system_metrics():
