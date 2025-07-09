@@ -348,7 +348,9 @@ class DatabaseManager:
             return []
         # Convert string _id to ObjectId for MongoDB queries
         converted_query = self._convert_string_to_objectid(query)
-        results = list(self.db[collection].find(converted_query))
+        # Encrypt sensitive fields in the query to match encrypted data in database
+        encrypted_query = self._encrypt_sensitive_fields(converted_query)
+        results = list(self.db[collection].find(encrypted_query))
         decrypted_results = [self._decrypt_sensitive_fields(doc) for doc in results]
         return [self._convert_objectid_to_string(doc) for doc in decrypted_results]
 
@@ -358,7 +360,11 @@ class DatabaseManager:
             return None
         # Convert string _id to ObjectId for MongoDB queries
         converted_query = self._convert_string_to_objectid(query)
-        custom_log(f"[DEBUG] _execute_find_one - Collection: {collection}, Original query: {query}, Converted query: {converted_query}")
+        
+        # Encrypt sensitive fields in the query to match encrypted data in database
+        encrypted_query = self._encrypt_sensitive_fields(converted_query)
+        
+        custom_log(f"[DEBUG] _execute_find_one - Collection: {collection}, Original query: {query}, Converted query: {converted_query}, Encrypted query: {encrypted_query}")
         custom_log(f"[DEBUG] _execute_find_one - Database: {self.db.name}, Collection: {collection}")
         custom_log(f"[DEBUG] _execute_find_one - Available collections: {list(self.db.list_collection_names())}")
         
@@ -372,7 +378,7 @@ class DatabaseManager:
             all_users = list(collection_obj.find({}, {"email": 1}))
             custom_log(f"[DEBUG] _execute_find_one - All user emails: {[user.get('email') for user in all_users]}")
         
-        result = self.db[collection].find_one(converted_query)
+        result = self.db[collection].find_one(encrypted_query)
         custom_log(f"[DEBUG] _execute_find_one - Result found: {result is not None}")
         if result:
             decrypted_result = self._decrypt_sensitive_fields(result)
@@ -482,8 +488,10 @@ class DatabaseManager:
         encrypted_data = data.copy()
         for field in Config.SENSITIVE_FIELDS:
             if field in encrypted_data and encrypted_data[field] is not None:
+                # Use deterministic encryption for searchable fields like email
+                deterministic = field in ['email', 'username']  # Fields that need to be searchable
                 encrypted_data[field] = self.encryption_manager.encrypt_data(
-                    encrypted_data[field]
+                    encrypted_data[field], deterministic=deterministic
                 )
         return encrypted_data
 

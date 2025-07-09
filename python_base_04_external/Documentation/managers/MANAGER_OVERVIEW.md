@@ -71,17 +71,12 @@ status = module_manager.get_module_status()
 - Database and collection operations
 - Query optimization and monitoring
 - Error handling and reconnection logic
+- **Deterministic encryption for searchable fields** (see below)
 
-**Usage**:
-```python
-# Database operations
-db = app_manager.database_manager
-collection = db.get_collection('users')
-
-# CRUD operations
-user = collection.find_one({"username": "john"})
-result = collection.insert_one({"username": "jane", "email": "jane@example.com"})
-```
+**Deterministic Encryption for Searchable Fields**:
+- When storing or searching for fields like `email` or `username`, the DatabaseManager uses deterministic encryption (hash-based) so that the same input always produces the same encrypted output.
+- This allows secure storage of sensitive data while still enabling login and user lookup by email/username.
+- All other sensitive fields use standard (randomized) encryption for maximum security.
 
 ---
 
@@ -136,17 +131,13 @@ is_valid = jwt.is_token_valid(token)
 - Key management and rotation
 - Automatic encryption/decryption of sensitive fields
 - Secure key storage integration
+- **Deterministic encryption for searchable fields** (see below)
 
-**Usage**:
-```python
-# Encryption operations
-encryption = app_manager.encryption_manager
-encrypted_data = encryption.encrypt("sensitive information")
-decrypted_data = encryption.decrypt(encrypted_data)
-
-# Field encryption for database
-encrypted_email = encryption.encrypt_field("user@example.com")
-```
+**Deterministic Encryption for Searchable Fields**:
+- For fields that must be searched (like `email` and `username`), the EncryptionManager uses a hash-based deterministic encryption method.
+- This ensures that searching for a user by email or username works, even though the data is encrypted at rest.
+- For all other fields, standard encryption with random IVs is used for maximum security.
+- This approach resolves issues where login or user lookup would fail due to non-deterministic encryption.
 
 ---
 

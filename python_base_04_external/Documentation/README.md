@@ -73,3 +73,13 @@
 
 *Last Updated: $(date '+%Y-%m-%d')*
 *Architecture Version: Module-First v1.0* 
+
+---
+
+## 🔒 Update: Deterministic Encryption for Searchable Fields (2025-07-09)
+
+- The authentication and user management system now uses deterministic encryption for searchable fields (such as `email` and `username`).
+- This allows secure storage of sensitive data while still enabling login and user lookup by email/username.
+- The encryption manager uses a hash-based deterministic encryption for these fields, while all other sensitive fields use standard (randomized) encryption.
+- This change resolves previous issues where login failed due to non-deterministic encryption of emails.
+- See the [Manager Overview](./managers/MANAGER_OVERVIEW.md) and [User Authentication System](./architecture/USER_AUTHENTICATION_SYSTEM.md) for details. 

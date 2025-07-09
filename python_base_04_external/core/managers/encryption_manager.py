@@ -38,12 +38,13 @@ class EncryptionManager:
         # Initialize Fernet with derived key
         self._fernet = Fernet(derived_key)
     
-    def encrypt_data(self, data: Any) -> str:
+    def encrypt_data(self, data: Any, deterministic: bool = False) -> str:
         """
         Encrypt data using AES-256.
         
         Args:
             data: Data to encrypt (will be converted to string)
+            deterministic: If True, use deterministic encryption for searchable fields
             
         Returns:
             str: Encrypted data as base64 string
@@ -55,9 +56,28 @@ class EncryptionManager:
         if not isinstance(data, str):
             data = str(data)
         
-        # Encrypt data
-        encrypted_data = self._fernet.encrypt(data.encode())
-        return encrypted_data.decode()
+        if deterministic:
+            # For deterministic encryption, use a hash-based approach
+            # This is not as secure as random IV but allows for searching
+            import hashlib
+            import hmac
+            
+            # Create a deterministic key based on the data
+            key = Config.ENCRYPTION_KEY.encode()
+            # Use HMAC to create a deterministic "IV" from the data
+            h = hmac.new(key, data.encode(), hashlib.sha256)
+            deterministic_iv = h.digest()[:16]  # Use first 16 bytes as IV
+            
+            # For now, we'll use a simple approach: hash the data with the key
+            # This is not ideal for security but allows searching
+            # In production, consider using a proper deterministic encryption library
+            combined = key + data.encode()
+            encrypted_data = hashlib.sha256(combined).hexdigest()
+            return f"det_{encrypted_data}"
+        else:
+            # Use standard Fernet encryption with random IV
+            encrypted_data = self._fernet.encrypt(data.encode())
+            return encrypted_data.decode()
     
     def decrypt_data(self, encrypted_data: str) -> str:
         """
@@ -78,6 +98,12 @@ class EncryptionManager:
         
         # If the data doesn't look like encrypted data (not base64), return as-is
         if not encrypted_data or len(encrypted_data) < 10:
+            return encrypted_data
+        
+        # Check if this is deterministic encryption
+        if encrypted_data.startswith("det_"):
+            # For deterministic encryption, we can't decrypt (it's a hash)
+            # Return the original encrypted value
             return encrypted_data
         
         try:

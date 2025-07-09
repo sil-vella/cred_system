@@ -101,13 +101,14 @@ class BaseModule(ABC):
             'details': 'Module is functioning normally' if self._initialized else 'Module not initialized'
         }
     
-    def _register_route_helper(self, route: str, view_func, methods: List[str] = None):
+    def _register_route_helper(self, route: str, view_func, methods: List[str] = None, auth: str = None):
         """
         Helper method to register a route and track it.
         
         :param route: URL route pattern
         :param view_func: View function to handle the route
         :param methods: HTTP methods allowed for this route
+        :param auth: Authentication type - 'jwt', 'key', or None for public
         """
         if not self.app:
             raise RuntimeError(f"Cannot register route {route} - Flask app not initialized")
@@ -115,7 +116,42 @@ class BaseModule(ABC):
         if methods is None:
             methods = ["GET"]
         
+        # Register with Flask
         self.app.add_url_rule(route, view_func=view_func, methods=methods)
-        self.registered_routes.append((route, view_func.__name__, methods))
-        self.logger.info(f"Registered route: {route} with methods {methods}")
-        custom_log(f"Module {self.module_name} registered route: {route}") 
+        
+        # Track route with authentication info
+        route_info = (route, view_func.__name__, methods, auth)
+        self.registered_routes.append(route_info)
+        
+        auth_info = f" (auth: {auth})" if auth else " (public)"
+        self.logger.info(f"Registered route: {route} with methods {methods}{auth_info}")
+        custom_log(f"Module {self.module_name} registered route: {route}{auth_info}")
+    
+    def _register_auth_route_helper(self, route: str, view_func, methods: List[str] = None):
+        """
+        Smart route registration that automatically determines authentication based on route prefix.
+        
+        Authentication rules:
+        - /userauth/* -> Requires JWT token
+        - /keyauth/* -> Requires API key
+        - /public/* -> No authentication required
+        - All other routes -> No authentication required (public)
+        
+        :param route: URL route pattern
+        :param view_func: View function to handle the route
+        :param methods: HTTP methods allowed for this route
+        """
+        auth_type = None
+        
+        # Determine authentication type based on route prefix
+        if route.startswith('/userauth/'):
+            auth_type = 'jwt'
+        elif route.startswith('/keyauth/'):
+            auth_type = 'key'
+        elif route.startswith('/public/'):
+            auth_type = None  # Explicitly public
+        else:
+            auth_type = None  # Default to public
+        
+        # Register with determined auth type
+        self._register_route_helper(route, view_func, methods, auth_type) 

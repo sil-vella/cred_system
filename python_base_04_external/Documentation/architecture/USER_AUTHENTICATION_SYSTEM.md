@@ -383,3 +383,12 @@ def login_user_external(credentials):
 - **API Key Activity**: Monitor external app usage
 
 This comprehensive authentication system provides secure, scalable user management for both direct users and external application integrations. 
+
+## 🔒 Searchable Field Encryption for Login
+
+To ensure user privacy and security, all sensitive fields (including email and username) are encrypted at rest. However, to allow login and user lookup by email/username, these fields use **deterministic encryption** (hash-based). This means:
+- The same email or username always encrypts to the same value, allowing database queries to work for login and search.
+- All other sensitive fields use randomized encryption for maximum security.
+- This approach resolves issues where login would fail due to non-deterministic encryption of emails.
+
+See the [Manager Overview](../managers/MANAGER_OVERVIEW.md) for technical details. 

@@ -42,23 +42,24 @@ class UserManagementModule(BaseModule):
         custom_log("UserManagementModule initialized")
 
     def register_routes(self):
-        """Register user management routes."""
-        # User CRUD operations
-        # User CRUD operations
-        self._register_route_helper("/users/create", self.create_user, methods=["POST"])
-        self._register_route_helper("/users/<user_id>", self.get_user, methods=["GET"])
-        self._register_route_helper("/users/search", self.search_users, methods=["POST"])
+        """Register user management routes with clean authentication-aware system."""
+        # Public routes (no authentication required)
+        self._register_auth_route_helper("/public/users/info", self.get_public_user_info, methods=["GET"])
+        self._register_auth_route_helper("/public/register", self.create_user, methods=["POST"])
+        self._register_auth_route_helper("/public/login", self.login_user, methods=["POST"])
         
-        # Authentication routes
-        self._register_route_helper("/auth/login", self.login_user, methods=["POST"])
-        self._register_route_helper("/auth/logout", self.logout_user, methods=["POST"])
-        self._register_route_helper("/auth/refresh", self.refresh_token, methods=["POST"])
-        self._register_route_helper("/auth/me", self.get_current_user, methods=["GET"])
+        # JWT authenticated routes (user authentication)
+        self._register_auth_route_helper("/userauth/users/profile", self.get_user_profile, methods=["GET"])
+        self._register_auth_route_helper("/userauth/users/profile", self.update_user_profile, methods=["PUT"])
+        self._register_auth_route_helper("/userauth/users/settings", self.get_user_settings, methods=["GET"])
+        self._register_auth_route_helper("/userauth/users/settings", self.update_user_settings, methods=["PUT"])
+        self._register_auth_route_helper("/userauth/logout", self.logout_user, methods=["POST"])
+        self._register_auth_route_helper("/userauth/refresh", self.refresh_token, methods=["POST"])
+        self._register_auth_route_helper("/userauth/me", self.get_current_user, methods=["GET"])
         
-        # Test endpoint for debugging
-        self._register_route_helper("/auth/test", self.test_debug, methods=["GET"])
+
         
-        custom_log(f"UserManagementModule registered {len(self.registered_routes)} routes")
+        custom_log(f"UserManagementModule registered {len(self.registered_routes)} routes with clean auth system")
 
     def initialize_database(self):
         """Verify database connection for user operations."""
@@ -76,20 +77,51 @@ class UserManagementModule(BaseModule):
             custom_log("⚠️ User operations will be limited - suitable for local development")
 
     def create_user(self):
-        """Create a new user with queued database operation."""
+        """Create a new user account with comprehensive setup."""
         try:
             data = request.get_json()
-            email = data.get('email')
-            username = data.get('username')
-            password = data.get('password')
             
-            if not all([email, username, password]):
-                return jsonify({'error': 'email, username, and password are required'}), 400
+            # Validate required fields
+            required_fields = ["username", "email", "password"]
+            for field in required_fields:
+                if not data.get(field):
+                    return jsonify({
+                        "success": False,
+                        "error": f"Missing required field: {field}"
+                    }), 400
             
-            # Check if user already exists using queue system
+            username = data.get("username")
+            email = data.get("email")
+            password = data.get("password")
+            
+            # Validate email format
+            if not self._is_valid_email(email):
+                return jsonify({
+                    "success": False,
+                    "error": "Invalid email format"
+                }), 400
+            
+            # Validate password strength
+            if not self._is_valid_password(password):
+                return jsonify({
+                    "success": False,
+                    "error": "Password must be at least 8 characters long"
+                }), 400
+            
+            # Check if user already exists
             existing_user = self.db_manager.find_one("users", {"email": email})
             if existing_user:
-                return jsonify({'error': 'User with this email already exists'}), 409
+                return jsonify({
+                    "success": False,
+                    "error": "User with this email already exists"
+                }), 409
+            
+            existing_username = self.db_manager.find_one("users", {"username": username})
+            if existing_username:
+                return jsonify({
+                    "success": False,
+                    "error": "Username already taken"
+                }), 409
             
             # Hash password
             hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
@@ -97,15 +129,17 @@ class UserManagementModule(BaseModule):
             # Get current timestamp for consistent date formatting
             current_time = datetime.utcnow()
             
-            # Prepare user data with modular structure
+            # Prepare user data with comprehensive structure
             user_data = {
                 # Core fields
-                'email': email,
                 'username': username,
+                'email': email,
                 'password': hashed_password.decode('utf-8'),
                 'status': 'active',
-                'created_at': current_time,
-                'updated_at': current_time,
+                'created_at': current_time.isoformat(),
+                'updated_at': current_time.isoformat(),
+                'last_login': None,
+                'login_count': 0,
                 
                 # Profile section
                 'profile': {
@@ -135,7 +169,7 @@ class UserManagementModule(BaseModule):
                         'enabled': True,
                         'balance': 0,
                         'currency': 'credits',
-                        'last_updated': current_time
+                        'last_updated': current_time.isoformat()
                     },
                     'subscription': {
                         'enabled': False,
@@ -153,33 +187,53 @@ class UserManagementModule(BaseModule):
                 'audit': {
                     'last_login': None,
                     'login_count': 0,
-                    'password_changed_at': current_time,
-                    'profile_updated_at': current_time
+                    'password_changed_at': current_time.isoformat(),
+                    'profile_updated_at': current_time.isoformat()
                 }
             }
             
-            # Insert user using queue system
+            # Insert user using database manager
             user_id = self.db_manager.insert("users", user_data)
             
-            if user_id:
-                # Remove password from response
-                user_data.pop('password', None)
-                user_data['_id'] = user_id
-                
-                # Convert datetime objects to ISO format for JSON response
-                response_data = self._prepare_user_response(user_data)
-                
+            if not user_id:
                 return jsonify({
-                    'message': 'User created successfully',
-                    'user': response_data,
-                    'status': 'created'
-                }), 201
-            else:
-                return jsonify({'error': 'Failed to create user'}), 500
+                    "success": False,
+                    "error": "Failed to create user account"
+                }), 500
+            
+            # Create initial wallet for user
+            wallet_data = {
+                'user_id': user_id,
+                'balance': 0.0,
+                'currency': 'USD',
+                'created_at': current_time.isoformat(),
+                'updated_at': current_time.isoformat(),
+                'status': 'active'
+            }
+            
+            wallet_id = self.db_manager.insert("wallets", wallet_data)
+            
+            # Remove password from response
+            user_data.pop('password', None)
+            user_data['_id'] = user_id
+            
+            custom_log(f"✅ User created successfully: {username} ({email})")
+            
+            return jsonify({
+                "success": True,
+                "message": "User created successfully",
+                "data": {
+                    "user": user_data,
+                    "wallet_id": wallet_id
+                }
+            }), 201
             
         except Exception as e:
-            custom_log(f"Error creating user: {e}")
-            return jsonify({'error': 'Failed to create user'}), 500
+            custom_log(f"❌ Error creating user: {e}")
+            return jsonify({
+                "success": False,
+                "error": "Internal server error"
+            }), 500
 
     def get_user(self, user_id):
         """Get user by ID with queued operation."""
@@ -269,117 +323,9 @@ class UserManagementModule(BaseModule):
             custom_log(f"Error searching users: {e}")
             return jsonify({'error': 'Failed to search users'}), 500
 
-    # Authentication Methods
-    def register_user(self):
-        """Register a new user account with authentication setup."""
-        try:
-            data = request.get_json()
-            
-            # Validate required fields
-            required_fields = ["username", "email", "password"]
-            for field in required_fields:
-                if not data.get(field):
-                    return jsonify({
-                        "success": False,
-                        "error": f"Missing required field: {field}"
-                    }), 400
-            
-            username = data.get("username")
-            email = data.get("email")
-            password = data.get("password")
-            
-            # Validate email format
-            if not self._is_valid_email(email):
-                return jsonify({
-                    "success": False,
-                    "error": "Invalid email format"
-                }), 400
-            
-            # Validate password strength
-            if not self._is_valid_password(password):
-                return jsonify({
-                    "success": False,
-                    "error": "Password must be at least 8 characters long"
-                }), 400
-            
-            # Check if user already exists
-            existing_user = self.db_manager.find_one("users", {"email": email})
-            if existing_user:
-                return jsonify({
-                    "success": False,
-                    "error": "User with this email already exists"
-                }), 409
-            
-            existing_username = self.db_manager.find_one("users", {"username": username})
-            if existing_username:
-                return jsonify({
-                    "success": False,
-                    "error": "Username already taken"
-                }), 409
-            
-            # Hash password
-            hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
-            
-            # Prepare user data
-            user_data = {
-                'username': username,
-                'email': email,
-                'password': hashed_password.decode('utf-8'),
-                'created_at': datetime.utcnow().isoformat(),
-                'updated_at': datetime.utcnow().isoformat(),
-                'status': 'active',
-                'last_login': None,
-                'login_count': 0
-            }
-            
-            print(f"[DEBUG] Registering user: {email}")
-            print(f"[DEBUG] Using db_manager: {self.db_manager}")
-            print(f"[DEBUG] User data prepared: {user_data}")
-            
-            # Insert user using database manager
-            user_id = self.db_manager.insert("users", user_data)
-            
-            print(f"[DEBUG] User inserted with ID: {user_id}")
-            
-            if not user_id:
-                return jsonify({
-                    "success": False,
-                    "error": "Failed to create user account"
-                }), 500
-            
-            # Create initial wallet for user
-            wallet_data = {
-                'user_id': user_id,
-                'balance': 0.0,
-                'currency': 'USD',
-                'created_at': datetime.utcnow().isoformat(),
-                'updated_at': datetime.utcnow().isoformat(),
-                'status': 'active'
-            }
-            
-            wallet_id = self.db_manager.insert("wallets", wallet_data)
-            
-            # Remove password from response
-            user_data.pop('password', None)
-            user_data['_id'] = user_id
-            
-            custom_log(f"✅ User registered successfully: {username} ({email})")
-            
-            return jsonify({
-                "success": True,
-                "message": "User registered successfully",
-                "data": {
-                    "user": user_data,
-                    "wallet_id": wallet_id
-                }
-            }), 201
-            
-        except Exception as e:
-            custom_log(f"❌ Error registering user: {e}")
-            return jsonify({
-                "success": False,
-                "error": "Internal server error"
-            }), 500
+
+
+
 
     def login_user(self):
         """Authenticate user and return JWT tokens."""
@@ -693,11 +639,131 @@ class UserManagementModule(BaseModule):
         return len(password) >= 8
 
     def test_debug(self):
-        """Test endpoint to verify debug logging works."""
-        print("[DEBUG] Test endpoint called!")
-        print(f"[DEBUG] Database manager: {self.db_manager}")
-        print(f"[DEBUG] Analytics DB: {self.analytics_db}")
-        return jsonify({"message": "Debug test successful"}), 200
+        """Test endpoint for debugging."""
+        return jsonify({
+            'message': 'User management module is working',
+            'module': 'UserManagementModule',
+            'timestamp': str(datetime.utcnow())
+        })
+
+    def get_public_user_info(self):
+        """Get public user information (no auth required)."""
+        return jsonify({
+            'message': 'Public user info endpoint',
+            'module': 'UserManagementModule',
+            'auth_required': False
+        })
+
+    def get_user_profile(self):
+        """Get user profile (JWT auth required)."""
+        try:
+            # User ID is set by JWT middleware
+            user_id = request.user_id
+            if not user_id:
+                return jsonify({'error': 'User not authenticated'}), 401
+            
+            # Get user profile from database
+            user = self.analytics_db.find_one("users", {"_id": user_id})
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+            
+            # Return profile data
+            profile_data = {
+                'user_id': user_id,
+                'email': user.get('email'),
+                'username': user.get('username'),
+                'profile': user.get('profile', {}),
+                'modules': user.get('modules', {})
+            }
+            
+            return jsonify(profile_data), 200
+            
+        except Exception as e:
+            custom_log(f"Error getting user profile: {e}")
+            return jsonify({'error': 'Failed to get user profile'}), 500
+
+    def update_user_profile(self):
+        """Update user profile (JWT auth required)."""
+        try:
+            user_id = request.user_id
+            if not user_id:
+                return jsonify({'error': 'User not authenticated'}), 401
+            
+            data = request.get_json()
+            update_data = {'updated_at': datetime.utcnow().isoformat()}
+            
+            # Only allow updating profile fields
+            allowed_fields = ['first_name', 'last_name', 'phone', 'timezone', 'language']
+            for field in allowed_fields:
+                if field in data:
+                    update_data[f'profile.{field}'] = data[field]
+            
+            # Update user profile
+            modified_count = self.db_manager.update("users", {"_id": user_id}, {"$set": update_data})
+            
+            if modified_count > 0:
+                return jsonify({
+                    'message': 'Profile updated successfully',
+                    'user_id': user_id
+                }), 200
+            else:
+                return jsonify({'error': 'Failed to update profile'}), 500
+                
+        except Exception as e:
+            custom_log(f"Error updating user profile: {e}")
+            return jsonify({'error': 'Failed to update profile'}), 500
+
+    def get_user_settings(self):
+        """Get user settings (JWT auth required)."""
+        try:
+            user_id = request.user_id
+            if not user_id:
+                return jsonify({'error': 'User not authenticated'}), 401
+            
+            user = self.analytics_db.find_one("users", {"_id": user_id})
+            if not user:
+                return jsonify({'error': 'User not found'}), 404
+            
+            settings_data = {
+                'user_id': user_id,
+                'preferences': user.get('preferences', {}),
+                'modules': user.get('modules', {})
+            }
+            
+            return jsonify(settings_data), 200
+            
+        except Exception as e:
+            custom_log(f"Error getting user settings: {e}")
+            return jsonify({'error': 'Failed to get user settings'}), 500
+
+    def update_user_settings(self):
+        """Update user settings (JWT auth required)."""
+        try:
+            user_id = request.user_id
+            if not user_id:
+                return jsonify({'error': 'User not authenticated'}), 401
+            
+            data = request.get_json()
+            update_data = {'updated_at': datetime.utcnow().isoformat()}
+            
+            # Allow updating preferences
+            if 'preferences' in data:
+                update_data['preferences'] = data['preferences']
+            
+            # Update user settings
+            modified_count = self.db_manager.update("users", {"_id": user_id}, {"$set": update_data})
+            
+            if modified_count > 0:
+                return jsonify({
+                    'message': 'Settings updated successfully',
+                    'user_id': user_id
+                }), 200
+            else:
+                return jsonify({'error': 'Failed to update settings'}), 500
+                
+        except Exception as e:
+            custom_log(f"Error updating user settings: {e}")
+            return jsonify({'error': 'Failed to update settings'}), 500
 
     def health_check(self) -> Dict[str, Any]:
         """Perform health check for UserManagementModule."""

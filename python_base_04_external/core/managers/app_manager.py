@@ -165,41 +165,6 @@ class AppManager:
         app.run(**kwargs)
 
     @log_function_call
-    def get_plugins_path(self, return_url=False):
-        """
-        Retrieve the absolute path or the URL path for the plugins directory.
-
-        :param return_url: If True, return the URL path for plugins; otherwise, return the absolute path.
-        :return: String representing either the full path or the URL path.
-        """
-        try:
-            # Get the absolute path of this file's directory (/app/core/)
-            core_path = os.path.abspath(os.path.dirname(__file__))  
-            
-            # Move TWO levels up to reach /app/
-            project_root = os.path.dirname(os.path.dirname(core_path))  
-
-            # Now plugins should be correctly at /app/plugins
-            plugins_dir = os.path.join(project_root, "plugins")  
-
-            if return_url:
-                if not self.flask_app:
-                    raise RuntimeError("Flask app is not initialized in AppManager.")
-                
-                base_url = request.host_url.rstrip('/')
-                return f"{base_url}/plugins"
-
-            # Ensure the directory exists before returning
-            if not os.path.exists(plugins_dir):
-                custom_log(f"Warning: Plugins directory does not exist at {plugins_dir}")
-                return None
-
-            return plugins_dir
-        except Exception as e:
-            custom_log(f"Error retrieving plugins path: {e}")
-            return None
-
-    @log_function_call
     def register_template_dir(self, template_dir):
         """
         Register a template directory with the Flask app.
@@ -370,69 +335,79 @@ class AppManager:
         from core.managers.api_key_manager import APIKeyManager
         self.api_key_manager = APIKeyManager(self.redis_manager)
 
-        # Define public routes that don't require authentication
-        public_routes = [
-            '/health',
-            '/modules/status',
-            '/api-keys/request-from-credit-system',  # Allow requesting API keys without auth
-            '/actions'  # Internal actions route (no auth required)
-        ]
-        
-        # Define routes that should skip API key validation and just forward to credit system
-        forward_routes = [
-            '/users',
-            '/auth/users'
-        ]
-        
-        # Define route patterns for dynamic routes (like /modules/<module_key>/health)
-        public_patterns = [
-            r'^/modules/.*/health$',  # Module health endpoints
-            r'^/actions/.*$',  # All /actions/* routes (internal actions)
-        ]
-        
-        # Define forward route patterns for user management
-        forward_patterns = [
-            r'^/users/.*$',  # All /users/* routes
-            r'^/auth/users/.*$'  # All /auth/users/* routes
-        ]
-
         @self.flask_app.before_request
         def authenticate_request():
-            """Middleware to authenticate requests using JWT + API Key."""
+            """Clean authentication middleware based on route prefixes."""
             # Skip authentication for OPTIONS requests (CORS preflight)
             if request.method == 'OPTIONS':
                 return None
-                
-            # Skip authentication for public routes
-            if request.path in public_routes:
-                return None
-                
-            # Check for dynamic public routes using regex patterns
-            import re
-            for pattern in public_patterns:
-                if re.match(pattern, request.path):
-                    return None
             
-            # Check for API key first (for external app requests)
-            api_key = request.headers.get('X-API-Key')
-            if api_key:
-                # Check if this is a forward route (skip API key validation)
-                is_forward_route = any(request.path.startswith(route) for route in forward_routes)
+            # Determine authentication requirements based on route prefix
+            auth_required = None
+            
+            # Check route-based authentication rules
+            if request.path.startswith('/userauth/'):
+                auth_required = 'jwt'
+            elif request.path.startswith('/keyauth/'):
+                auth_required = 'key'
+            elif request.path.startswith('/public/'):
+                auth_required = None  # Explicitly public
+            else:
+                # Default to public for all other routes
+                auth_required = None
+            
+            # If no authentication required, continue
+            if auth_required is None:
+                return None
+            
+            # Handle JWT authentication
+            if auth_required == 'jwt':
+                auth_header = request.headers.get('Authorization')
+                if not auth_header or not auth_header.startswith('Bearer '):
+                    return jsonify({
+                        'error': 'Missing or invalid authorization header',
+                        'message': 'JWT token required for this endpoint.',
+                        'code': 'JWT_REQUIRED'
+                    }), 401
                 
-                # Also check forward patterns
-                import re
-                for pattern in forward_patterns:
-                    if re.match(pattern, request.path):
-                        is_forward_route = True
-                        break
+                # Extract and validate JWT token
+                token = auth_header.split(' ')[1]
+                try:
+                    from core.managers.jwt_manager import TokenType
+                    payload = self.jwt_manager.verify_token(token, TokenType.ACCESS)
+                    if not payload:
+                        return jsonify({
+                            'error': 'Invalid or expired token',
+                            'message': 'Please login again to get a fresh token.',
+                            'code': 'TOKEN_INVALID'
+                        }), 401
+                    
+                    # Set user context for the request
+                    request.user_id = payload.get('user_id')
+                    request.user_payload = payload
+                    
+                    custom_log(f"✅ JWT authenticated request for user: {request.user_id}")
+                    return None
+                    
+                except Exception as e:
+                    custom_log(f"❌ JWT authentication error: {str(e)}", level="ERROR")
+                    return jsonify({
+                        'error': 'Token validation failed',
+                        'message': 'Please login again.',
+                        'code': 'TOKEN_VALIDATION_ERROR'
+                    }), 401
+            
+            # Handle API key authentication
+            if auth_required == 'key':
+                api_key = request.headers.get('X-API-Key')
+                if not api_key:
+                    return jsonify({
+                        'error': 'Missing API key',
+                        'message': 'API key required for this endpoint.',
+                        'code': 'API_KEY_REQUIRED'
+                    }), 401
                 
-                if is_forward_route:
-                    # For forward routes, just pass the API key through without validation
-                    request.api_key = api_key
-                    custom_log(f"🔄 Forwarding request with API key to credit system: {request.path}")
-                    return None  # Continue with request processing
-                
-                # For other routes, validate API key against local API key manager
+                # Validate API key
                 api_key_data = self.api_key_manager.validate_api_key(api_key)
                 if not api_key_data:
                     return jsonify({
@@ -448,44 +423,9 @@ class AppManager:
                 request.api_key_data = api_key_data
                 
                 custom_log(f"✅ API key authenticated for app: {request.app_name} ({request.app_id})")
-                return None  # Continue with request processing
-            
-            # Check for JWT token (for direct user requests)
-            auth_header = request.headers.get('Authorization')
-            if not auth_header or not auth_header.startswith('Bearer '):
-                return jsonify({
-                    'error': 'Missing or invalid authorization header',
-                    'message': 'Authentication required. Please provide a valid JWT token or API key.',
-                    'code': 'AUTH_REQUIRED'
-                }), 401
-                
-            # Extract and validate JWT token
-            token = auth_header.split(' ')[1]
-            try:
-                from core.managers.jwt_manager import TokenType
-                payload = self.jwt_manager.verify_token(token, TokenType.ACCESS)
-                if not payload:
-                    return jsonify({
-                        'error': 'Invalid or expired token',
-                        'message': 'Please login again to get a fresh token.',
-                        'code': 'TOKEN_INVALID'
-                    }), 401
-                    
-                # Set user context for the request
-                request.user_id = payload.get('user_id')
-                request.user_payload = payload
-                
-                custom_log(f"✅ JWT authenticated request for user: {request.user_id}")
-                
-            except Exception as e:
-                custom_log(f"❌ JWT authentication error: {str(e)}", level="ERROR")
-                return jsonify({
-                    'error': 'Token validation failed',
-                    'message': 'Please login again.',
-                    'code': 'TOKEN_VALIDATION_ERROR'
-                }), 401
+                return None
 
-        custom_log("✅ Global authentication middleware configured (JWT + API Key)")
+        custom_log("✅ Clean authentication middleware configured (Route-based only)")
 
     @log_function_call
     def register_hook(self, hook_name):

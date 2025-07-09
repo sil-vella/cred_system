@@ -50,18 +50,8 @@ class CreditSystemModule(BaseModule):
 
     def register_routes(self):
         """Register wildcard routes that capture all user-related requests."""
-        # Base routes for when no subpath is provided
-        self._register_route_helper("/users", self.forward_user_request, methods=["GET", "POST", "PUT", "DELETE"])
-        self._register_route_helper("/auth/users", self.forward_user_request, methods=["GET", "POST", "PUT", "DELETE"])
         
-        # Wildcard routes for subpaths
-        self._register_route_helper("/users/<path:subpath>", self.forward_user_request, methods=["GET", "POST", "PUT", "DELETE"])
-        self._register_route_helper("/auth/users/<path:subpath>", self.forward_user_request, methods=["GET", "POST", "PUT", "DELETE"])
-        
-        # Test endpoint for debugging
-        self._register_route_helper("/auth/test", self.test_debug, methods=["GET"])
-        
-        custom_log(f"CreditSystemModule registered 4 routes for user forwarding")
+        custom_log(f"CreditSystemModule 0 routes for user forwarding")
 
     def forward_user_request(self, subpath=None):
         """Forward user management requests to credit system with API key."""
