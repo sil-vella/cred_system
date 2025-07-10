@@ -40,7 +40,7 @@ class LoginModule extends ModuleBase {
       final stateManager = Provider.of<StateManager>(context, listen: false);
       stateManager.registerPluginState("login", {
         "isLoggedIn": _sharedPref?.getBool('is_logged_in') ?? false,
-        "userId": _sharedPref?.getInt('user_id'),
+        "userId": _sharedPref?.getString('user_id'),
         "username": _sharedPref?.getString('username'),
         "email": _sharedPref?.getString('email'),
         "error": null
@@ -64,7 +64,7 @@ class LoginModule extends ModuleBase {
 
     return {
       "status": "logged_in",
-      "user_id": _sharedPref!.getInt('user_id'),
+      "user_id": _sharedPref!.getString('user_id'),
       "username": _sharedPref!.getString('username'),
       "email": _sharedPref!.getString('email'),
     };
@@ -107,25 +107,18 @@ class LoginModule extends ModuleBase {
       return {"error": "Invalid email format. Please enter a valid email address."};
     }
 
-    // Validate password requirements
-    if (password.length < 6) {
-      return {"error": "Password must be at least 6 characters long"};
-    }
-
-    if (!RegExp(r'[0-9]').hasMatch(password)) {
-      return {"error": "Password must contain at least 1 number"};
-    }
-
-    if (!RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password)) {
-      return {"error": "Password must contain at least 1 special character"};
+    // Validate password requirements (aligned with backend)
+    if (password.length < 8) {
+      return {"error": "Password must be at least 8 characters long"};
     }
 
     try {
       _log.info("⚡ Sending registration request...");
       _log.info("📤 Registration data: username=$username, email=$email");
       
+      // Use the correct backend route
       final response = await _connectionModule!.sendPostRequest(
-        "/register",
+        "/public/register",
         {
           "username": username,
           "email": email,
@@ -136,7 +129,7 @@ class LoginModule extends ModuleBase {
       _log.info("📥 Registration response: $response");
 
       if (response is Map) {
-        if (response["message"] == "User registered successfully") {
+        if (response["success"] == true || response["message"] == "User created successfully") {
           _log.info("✅ User registered successfully.");
           return {"success": "Registration successful. Please log in."};
         } else if (response["error"] != null) {
@@ -178,8 +171,10 @@ class LoginModule extends ModuleBase {
     try {
       _log.info("⚡ Preparing login request...");
       _log.info("📤 Sending login request to backend...");
+      
+      // Use the correct backend route
       final response = await _connectionModule!.sendPostRequest(
-        "/login",
+        "/public/login",
         {"email": email, "password": password},
       );
       _log.info("📥 Received login response: $response");
@@ -208,31 +203,51 @@ class LoginModule extends ModuleBase {
         return {"error": errorMessage};
       }
 
-      // Handle successful login
-      if (response?["message"] == "Login successful" || response?["success"] == true) {
+      // Handle successful login (aligned with backend response format)
+      if (response?["success"] == true || response?["message"] == "Login successful") {
         _log.info("✅ Login successful");
+        
+        // Extract user data from response
+        final userData = response?["data"]?["user"] ?? {};
+        final accessToken = response?["data"]?["access_token"];
+        final refreshToken = response?["data"]?["refresh_token"];
+        
+        if (accessToken == null) {
+          _log.error("❌ No access token in login response");
+          return {"error": "Login successful but no access token received"};
+        }
+        
+        // Store JWT tokens in secure storage for WebSocket authentication
+        await _connectionModule!.updateAuthTokens(
+          accessToken: accessToken,
+          refreshToken: refreshToken
+        );
         
         // Store user data in SharedPreferences
         await _sharedPref!.setBool('is_logged_in', true);
-        await _sharedPref!.setInt('user_id', response?["user_id"] ?? 0);
-        await _sharedPref!.setString('username', response?["username"] ?? "");
+        await _sharedPref!.setString('user_id', userData['_id'] ?? userData['id'] ?? '');
+        await _sharedPref!.setString('username', userData['username'] ?? '');
         await _sharedPref!.setString('email', email);
         
         // Update state manager
         final stateManager = Provider.of<StateManager>(context, listen: false);
         stateManager.updatePluginState("login", {
           "isLoggedIn": true,
-          "userId": response?["user_id"],
-          "username": response?["username"],
+          "userId": userData['_id'] ?? userData['id'],
+          "username": userData['username'],
           "email": email,
           "error": null
         });
         
+        _log.info("✅ JWT tokens stored for WebSocket authentication");
+        
         return {
           "success": "Login successful",
-          "user_id": response?["user_id"],
-          "username": response?["username"],
-          "email": email
+          "user_id": userData['_id'] ?? userData['id'],
+          "username": userData['username'],
+          "email": email,
+          "access_token": accessToken,
+          "refresh_token": refreshToken
         };
       }
 
@@ -249,6 +264,9 @@ class LoginModule extends ModuleBase {
     _log.info("🔓 Starting logout process");
 
     try {
+      // Clear JWT tokens from secure storage
+      await _connectionModule!.clearAuthTokens();
+      
       // Clear stored user data
       await _sharedPref!.setBool('is_logged_in', false);
       await _sharedPref!.remove('user_id');
@@ -265,11 +283,39 @@ class LoginModule extends ModuleBase {
         "error": null
       });
       
-      _log.info("✅ Logout successful");
+      _log.info("✅ Logout successful - JWT tokens cleared");
       return {"success": "Logout successful"};
     } catch (e) {
       _log.error("❌ Logout error: $e");
       return {"error": "Logout failed"};
     }
+  }
+
+  /// ✅ Get current JWT token for WebSocket authentication
+  Future<String?> getCurrentToken() async {
+    if (_connectionModule == null) {
+      _log.error("❌ Connection module not available for token retrieval");
+      return null;
+    }
+    
+    try {
+      final token = await _connectionModule!.getAccessToken();
+      if (token != null) {
+        _log.info("✅ Retrieved JWT token for WebSocket authentication");
+        return token;
+      } else {
+        _log.info("⚠️ No JWT token available for WebSocket authentication");
+        return null;
+      }
+    } catch (e) {
+      _log.error("❌ Error retrieving JWT token: $e");
+      return null;
+    }
+  }
+
+  /// ✅ Check if user has valid JWT token for WebSocket
+  Future<bool> hasValidToken() async {
+    final token = await getCurrentToken();
+    return token != null;
   }
 }

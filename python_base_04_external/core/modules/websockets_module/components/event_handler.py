@@ -2,7 +2,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 from tools.logger.custom_logging import custom_log
 from flask import request
-from core.managers.websocket_manager import WebSocketManager
+from ..websocket_manager import WebSocketManager
 from core.managers.redis_manager import RedisManager
 from .room_manager import RoomManager, RoomPermission
 from .session_manager import SessionManager
@@ -24,6 +24,7 @@ class EventHandler:
 
     def handle_connect(self, data=None):
         """Handle new WebSocket connections with security checks."""
+        custom_log(f"DEBUG - EventHandler.handle_connect called with data: {data}")
         session_id = request.sid
         origin = request.headers.get('Origin', '')
         client_id = request.headers.get('X-Client-ID', session_id)
@@ -48,21 +49,40 @@ class EventHandler:
             custom_log("No token provided for WebSocket connection")
             return self.result_handler.create_result('connect', error='Authentication required')
             
-        user_data = self.session_manager.validate_token(token)
-        if not user_data:
+        # Validate token using JWT manager directly
+        from core.managers.jwt_manager import TokenType
+        payload = self.websocket_manager._jwt_manager.verify_token(token, TokenType.ACCESS) or \
+                 self.websocket_manager._jwt_manager.verify_token(token, TokenType.WEBSOCKET)
+        if not payload:
             custom_log("Invalid token for WebSocket connection")
             return self.result_handler.create_result('connect', error='Invalid authentication')
+            
+        custom_log(f"DEBUG - JWT payload: {payload}")
             
         # Update rate limits
         self.websocket_manager.update_rate_limit(client_id, 'connections')
         
-        # Create session
-        session_data = self.session_manager.create_session(session_id, client_id, origin, user_data, token)
+        # Create session data for WebSocket manager
+        session_data = {
+            'user_id': str(payload.get('user_id')),
+            'username': payload.get('username'),
+            'token': token,
+            'token_type': payload.get('type'),
+            'connected_at': datetime.utcnow().isoformat(),
+            'last_active': datetime.utcnow().isoformat(),
+            'rooms': [],
+            'client_id': client_id,
+            'origin': origin
+        }
+        
+        # Store session data using WebSocket manager
+        custom_log(f"DEBUG - Storing session data: {session_data}")
+        self.websocket_manager.store_session_data(session_id, session_data)
         
         # Send session data to client
         self.broadcast_manager.send_to_session(session_id, 'session_data', session_data)
         
-        custom_log(f"New WebSocket connection: {session_id} from {origin} for user {user_data['id']}")
+        custom_log(f"New WebSocket connection: {session_id} from {origin} for user {session_data['user_id']}")
         return self.result_handler.create_result('connect', data={'session_id': session_id})
 
     def handle_disconnect(self, data=None):
@@ -70,7 +90,7 @@ class EventHandler:
         session_id = request.sid
         
         # Get user data before cleanup
-        session_data = self.session_manager.get_session(session_id)
+        session_data = self.websocket_manager.get_session_data(session_id)
         if session_data:
             username = session_data.get('username')
             if username:
@@ -85,11 +105,8 @@ class EventHandler:
                         {'username': username}
                     )
         
-        # Clean up session data
-        self.session_manager.delete_session(session_id)
-        
-        # Clean up WebSocket session
-        self.websocket_manager.cleanup_session(session_id)
+        # Clean up session data using WebSocket manager
+        self.websocket_manager.cleanup_session_data(session_id)
         custom_log(f"WebSocket disconnected: {session_id}")
 
     async def handle_join(self, session_id: str, data: dict = None) -> dict:
@@ -120,8 +137,8 @@ class EventHandler:
                 )
                 return {'status': 'error', 'message': 'Missing room_id'}
 
-            # Get session data
-            session_data = self.session_manager.get_session(session_id)
+            # Get session data from WebSocket manager
+            session_data = self.websocket_manager.get_session_data(session_id)
             if not session_data:
                 custom_log(f"Session {session_id} not found")
                 await self.broadcast_manager.send_to_session(
@@ -202,7 +219,7 @@ class EventHandler:
                 
             # Get session data from WebSocket manager
             session_id = request.sid
-            session_data = self.session_manager.get_session(session_id)
+            session_data = self.websocket_manager.get_session_data(session_id)
             if not session_data:
                 custom_log("No session data found for leave event")
                 return self.result_handler.create_result('leave', error='No session data found')
@@ -214,9 +231,6 @@ class EventHandler:
                 
             # Leave room
             self.websocket_manager.leave_room(room_id, session_id)
-            
-            # Update session data to remove room membership
-            self.session_manager.remove_room_from_session(session_id, room_id)
             
             # Broadcast leave event
             self.broadcast_manager.broadcast_to_room(room_id, 'user_left', {
@@ -243,7 +257,7 @@ class EventHandler:
                 
             # Get session data from WebSocket manager
             session_id = request.sid
-            session_data = self.session_manager.get_session(session_id)
+            session_data = self.websocket_manager.get_session_data(session_id)
             if not session_data:
                 custom_log("No session data found for message event")
                 return self.result_handler.create_result('message', error='No session data found')
@@ -274,7 +288,7 @@ class EventHandler:
                 
             # Get session data from WebSocket manager
             session_id = request.sid
-            session_data = self.session_manager.get_session(session_id)
+            session_data = self.websocket_manager.get_session_data(session_id)
             if not session_data:
                 custom_log("No session data found for get users event")
                 return self.result_handler.create_result('get_users', error='No session data found')
@@ -285,7 +299,7 @@ class EventHandler:
             # Get user data for each member
             users = []
             for member_id in room_members:
-                member_session = self.session_manager.get_session(member_id)
+                member_session = self.websocket_manager.get_session_data(member_id)
                 if member_session:
                     users.append({
                         'user_id': member_session.get('user_id'),
@@ -311,7 +325,7 @@ class EventHandler:
             # Get session data from WebSocket manager if not provided
             session_id = request.sid
             if not session_data:
-                session_data = self.session_manager.get_session(session_id)
+                session_data = self.websocket_manager.get_session_data(session_id)
                 if not session_data:
                     custom_log("No session data found for create room event")
                     return self.result_handler.create_result('create_room', error='No session data found')

@@ -1,5 +1,5 @@
 from typing import Any, Set
-from core.managers.websocket_manager import WebSocketManager
+from ..websocket_manager import WebSocketManager
 from tools.logger.custom_logging import custom_log
 
 class BroadcastManager:

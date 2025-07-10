@@ -1,5 +1,5 @@
 from flask import request
-from core.managers.websocket_manager import WebSocketManager
+from .websocket_manager import WebSocketManager
 from core.managers.redis_manager import RedisManager
 from core.managers.jwt_manager import JWTManager
 from tools.logger.custom_logging import custom_log
@@ -53,7 +53,7 @@ class WebSocketModule(BaseModule):
         super().initialize(app_manager)
         
         if app_manager and app_manager.flask_app:
-            self.websocket_manager.initialize(app_manager.flask_app)
+            self.websocket_manager.initialize(app_manager.flask_app, use_builtin_handlers=False)
         
         # Initialize CORS settings
         self._setup_cors()

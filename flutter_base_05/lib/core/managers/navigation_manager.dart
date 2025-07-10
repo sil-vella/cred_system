@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../modules/home_module/home_screen.dart';
 import '../../screens/websocket_screen.dart';
+import '../../screens/account_screen/account_screen.dart';
 import '../00_base/module_base.dart';
 
 class RegisteredRoute {
@@ -47,13 +48,22 @@ class NavigationManager extends ChangeNotifier {
       drawerPosition: 1,
     );
     
+    // Register Account screen
+    registerRoute(
+      path: '/account',
+      screen: (context) => AccountScreen(),
+      drawerTitle: 'Account',
+      drawerIcon: Icons.account_circle,
+      drawerPosition: 2,
+    );
+    
     // Register WebSocket test screen
     registerRoute(
       path: '/websocket',
       screen: (context) => const WebSocketScreen(),
       drawerTitle: 'WebSocket Test',
       drawerIcon: Icons.wifi,
-      drawerPosition: 2,
+      drawerPosition: 3,
     );
   }
 
