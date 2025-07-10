@@ -511,6 +511,21 @@ class Config:
     MONGODB_SSL_KEY_FILE = get_file_first_config_value("mongodb_ssl_key_file", "MONGODB_SSL_KEY_FILE", "")
     MONGODB_SSL_ALLOW_INVALID_CERTIFICATES = get_file_first_config_value("mongodb_ssl_allow_invalid_certificates", "MONGODB_SSL_ALLOW_INVALID_CERTIFICATES", "false").lower() == "true"
 
+    # WebSocket Configuration
+    WS_ALLOWED_ORIGINS = get_file_first_config_value("ws_allowed_origins", "WS_ALLOWED_ORIGINS", "*").split(",")
+    WS_MAX_PAYLOAD_SIZE = int(get_file_first_config_value("ws_max_payload_size", "WS_MAX_PAYLOAD_SIZE", "1048576"))  # 1MB default
+    WS_PING_TIMEOUT = int(get_file_first_config_value("ws_ping_timeout", "WS_PING_TIMEOUT", "60"))  # 60 seconds
+    WS_PING_INTERVAL = int(get_file_first_config_value("ws_ping_interval", "WS_PING_INTERVAL", "25"))  # 25 seconds
+    WS_RATE_LIMIT_CONNECTIONS = int(get_file_first_config_value("ws_rate_limit_connections", "WS_RATE_LIMIT_CONNECTIONS", "100"))  # Max connections per window
+    WS_RATE_LIMIT_MESSAGES = int(get_file_first_config_value("ws_rate_limit_messages", "WS_RATE_LIMIT_MESSAGES", "1000"))  # Max messages per window
+    WS_RATE_LIMIT_WINDOW = int(get_file_first_config_value("ws_rate_limit_window", "WS_RATE_LIMIT_WINDOW", "60"))  # Rate limit window in seconds
+    WS_ROOM_SIZE_LIMIT = int(get_file_first_config_value("ws_room_size_limit", "WS_ROOM_SIZE_LIMIT", "100"))  # Max users per room
+    WS_ROOM_SIZE_CHECK_INTERVAL = int(get_file_first_config_value("ws_room_size_check_interval", "WS_ROOM_SIZE_CHECK_INTERVAL", "30"))  # Check interval in seconds
+    WS_PRESENCE_CHECK_INTERVAL = int(get_file_first_config_value("ws_presence_check_interval", "WS_PRESENCE_CHECK_INTERVAL", "60"))  # Presence check interval in seconds
+    WS_PRESENCE_TIMEOUT = int(get_file_first_config_value("ws_presence_timeout", "WS_PRESENCE_TIMEOUT", "300"))  # Presence timeout in seconds
+    WS_PRESENCE_CLEANUP_INTERVAL = int(get_file_first_config_value("ws_presence_cleanup_interval", "WS_PRESENCE_CLEANUP_INTERVAL", "300"))  # Cleanup interval in seconds
+    WS_SESSION_TTL = int(get_file_first_config_value("ws_session_ttl", "WS_SESSION_TTL", "3600"))  # Session TTL in seconds
+
     @classmethod
     def refresh_from_vault(cls):
         """Refresh configuration values from Vault after app initialization."""
