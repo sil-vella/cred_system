@@ -91,7 +91,13 @@ class CSUserManagementModule(BaseModule):
             # Get current timestamp for consistent date formatting
             current_time = datetime.utcnow()
             
-            # Prepare user data with modular structure
+            # Extract external app information from request
+            app_id = data.get('app_id', 'external_app_001')
+            app_name = data.get('app_name', 'External Application')
+            app_version = data.get('app_version', '1.0.0')
+            source = data.get('source', 'external_app')
+            
+            # Prepare core user data (no app-specific data)
             user_data = {
                 # Core fields
                 'email': email,
@@ -152,10 +158,63 @@ class CSUserManagementModule(BaseModule):
                 }
             }
             
-            # Insert user using queue system
+            # Insert core user using queue system
             user_id = self.db_manager.insert("users", user_data)
             
             if user_id:
+                # Create app connection record for multi-tenant structure
+                app_connection_data = {
+                    'user_id': user_id,
+                    'app_id': app_id,
+                    'app_name': app_name,
+                    'app_version': app_version,
+                    'app_username': data.get('app_username', username),  # App-specific username
+                    'app_display_name': data.get('app_display_name', f"{data.get('first_name', '')} {data.get('last_name', '')}".strip() or username),
+                    'app_profile': {  # App-specific profile data
+                        'nickname': data.get('nickname', username[:2].upper()),
+                        'avatar_url': data.get('avatar_url', ''),
+                        'preferences': {
+                            'theme': data.get('theme', 'auto'),
+                            'language': data.get('language', 'en'),
+                            'notifications': data.get('notifications_enabled', True)
+                        },
+                        'custom_fields': data.get('custom_fields', {})
+                    },
+                    'connection_status': 'active',
+                    'permissions': data.get('permissions', ['read', 'write', 'wallet_access']),
+                    'api_key': data.get('api_key', ''),
+                    'sync_frequency': data.get('sync_frequency', 'realtime'),
+                    'connected_at': current_time,
+                    'last_sync': current_time,
+                    'sync_settings': {
+                        'wallet_updates': data.get('wallet_updates', True),
+                        'profile_updates': data.get('profile_updates', True),
+                        'transaction_history': data.get('transaction_history', True)
+                    },
+                    'rate_limits': {
+                        'requests_per_minute': data.get('requests_per_minute', 100),
+                        'requests_per_hour': data.get('requests_per_hour', 1000)
+                    }
+                }
+                
+                # Insert app connection
+                app_connection_id = self.db_manager.insert("user_apps", app_connection_data)
+                
+                # Create audit log for app connection
+                audit_log_data = {
+                    'user_id': user_id,
+                    'app_id': app_id,
+                    'action': 'app_connected',
+                    'module': 'apps',
+                    'changes': {
+                        'app_connection': { 'old': None, 'new': app_id }
+                    },
+                    'timestamp': current_time,
+                    'ip_address': request.remote_addr if request else '127.0.0.1'
+                }
+                
+                self.db_manager.insert("user_audit_logs", audit_log_data)
+                
                 # Remove password from response
                 user_data.pop('password', None)
                 user_data['_id'] = user_id
@@ -163,9 +222,12 @@ class CSUserManagementModule(BaseModule):
                 # Convert datetime objects to ISO format for JSON response
                 response_data = self._prepare_user_response(user_data)
                 
+                custom_log(f"✅ User created successfully: {username} ({email}) with app connection: {app_id}")
+                
                 return jsonify({
                     'message': 'User created successfully',
                     'user': response_data,
+                    'app_connection_id': str(app_connection_id),
                     'status': 'created'
                 }), 201
             else:
