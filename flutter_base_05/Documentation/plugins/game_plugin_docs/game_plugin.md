@@ -82,7 +82,7 @@ final joinLinks = GamePlugin.generateJoinLinks('room_123');
 The plugin integrates the following modules:
 - `GameSocketEventsModule`: Game event handling
 - `FunctionHelperModule`: Utility functions
-- `WebSocketModule`: Real-time communication
+- `WebSocketManager`: Real-time communication (singleton manager)
 
 ## State Management
 - Room state tracking
@@ -110,7 +110,7 @@ The plugin integrates the following modules:
 - `provider` package
 - `Logger`
 - `SharedPrefManager`
-- `WebSocketModule`
+- `WebSocketManager`
 
 ## Integration Points
 The GamePlugin integrates with:

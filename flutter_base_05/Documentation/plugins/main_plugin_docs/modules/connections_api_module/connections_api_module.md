@@ -103,7 +103,7 @@ final response = await connectionsModule.sendRequest(
 
 ## Integration Points
 The ConnectionsApiModule integrates with:
-- `WebSocketModule`: For real-time communication
+- `WebSocketManager`: For real-time communication (singleton manager)
 - `StateManager`: For state updates
 - `ModuleManager`: For module access
 - `AuthInterceptor`: For request interception

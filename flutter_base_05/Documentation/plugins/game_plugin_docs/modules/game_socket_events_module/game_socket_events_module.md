@@ -17,7 +17,7 @@ Extends `ModuleBase` and manages game socket events.
 
 #### Properties
 - `_log`: Logger instance
-- `_websocketModule`: WebSocket module reference
+- `_websocketManager`: WebSocket manager reference
 - `_connectionSubscription`: Connection state subscription
 
 #### Methods
@@ -82,12 +82,12 @@ socket.on('room_joined', (data) {
 - `flutter/material.dart`
 - `provider` package
 - `Logger`
-- `WebSocketModule`
+- `WebSocketManager`
 - `StateManager`
 
 ## Integration Points
 The module integrates with:
-- `WebSocketModule`: For socket communication
+- `WebSocketManager`: For socket communication
 - `StateManager`: For state updates
 - `ModuleManager`: For module access
 - `ServicesManager`: For service access

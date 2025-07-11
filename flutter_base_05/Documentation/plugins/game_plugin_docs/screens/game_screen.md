@@ -21,7 +21,7 @@ Extends `BaseScreen` and manages the game interface.
 - `_log`: Logger instance
 - `_moduleManager`: Module manager reference
 - `_servicesManager`: Services manager reference
-- `_websocketModule`: WebSocket module reference
+- `_websocketManager`: WebSocket manager reference
 - `_loginModule`: Login module reference
 - `_roomController`: Room input controller
 - `_logController`: Log display controller
@@ -110,7 +110,7 @@ stateManager.updatePluginState("game_room", <String, dynamic>{
 
 ## Integration Points
 The screen integrates with:
-- `WebSocketModule`: For real-time communication
+- `WebSocketManager`: For real-time communication
 - `LoginModule`: For user authentication
 - `GameSocketEventsModule`: For game events
 - `StateManager`: For state management

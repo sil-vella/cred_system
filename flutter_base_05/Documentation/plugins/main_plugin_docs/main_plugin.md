@@ -33,7 +33,7 @@ The plugin integrates the following modules:
 - `MainHelperModule`: Utility functions
 - `LoginModule`: Authentication
 - `AudioModule`: Audio management
-- `WebSocketModule`: Real-time communication
+- `WebSocketManager`: Real-time communication (singleton manager)
 
 ## Navigation System
 Registered routes include:

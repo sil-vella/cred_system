@@ -344,17 +344,26 @@ class EventHandler:
             now = datetime.now()
             room_id = f"{user_id}-{now.strftime('%d%y%H%M')}"
             
-            # Get additional parameters from data
-            permission = data.get('permission')
-            allowed_users = data.get('allowed_users')
-            allowed_roles = data.get('allowed_roles')
+            # Get room parameters from data
+            permission = data.get('permission', 'public')
+            allowed_users = set(data.get('allowed_users', [])) if data.get('allowed_users') else set()
+            allowed_roles = set(data.get('allowed_roles', [])) if data.get('allowed_roles') else set()
             
-            custom_log(f"Creating room with ID: {room_id}")
+            # Validate permission type
+            if permission not in ['public', 'private', 'restricted', 'owner_only']:
+                permission = 'public'
+            
+            # For public rooms, no need to specify allowed_users/roles
+            if permission == 'public':
+                allowed_users = set()
+                allowed_roles = set()
+            
+            custom_log(f"Creating room with ID: {room_id}, permission: {permission}")
                 
-            # Create room
+            # Create room with specified permission
             room_data = self.room_manager.create_room(
                 room_id,
-                permission or RoomPermission.PUBLIC,
+                RoomPermission(permission),
                 user_id,
                 allowed_users,
                 allowed_roles
@@ -388,12 +397,12 @@ class EventHandler:
                 'owner_id': user_id,
                 'owner_username': session_data.get('username'),
                 'permission': permission,
-                'allowed_users': allowed_users,
-                'allowed_roles': allowed_roles,
+                'allowed_users': list(allowed_users),
+                'allowed_roles': list(allowed_roles),
                 'join_link': join_link
             })
             
-            custom_log(f"Room {room_id} created by {session_data.get('username')}")
+            custom_log(f"Room {room_id} created by {session_data.get('username')} with {permission} permission")
             return self.result_handler.create_result('create_room', data=room_data)
             
         except Exception as e:

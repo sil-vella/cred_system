@@ -1,4 +1,3 @@
-from flask import request
 from .websocket_manager import WebSocketManager
 from core.managers.redis_manager import RedisManager
 from core.managers.jwt_manager import JWTManager
@@ -61,6 +60,9 @@ class WebSocketModule(BaseModule):
         # Register WebSocket handlers
         self._register_handlers()
         
+        # Register WebSocket routes
+        self._register_routes()
+        
         # Mark as initialized
         self._initialized = True
         custom_log("WebSocketModule initialization complete")
@@ -91,6 +93,16 @@ class WebSocketModule(BaseModule):
         # This makes the code more modular and easier to maintain
         
         custom_log("WebSocket event handlers registered")
+
+    def _register_routes(self):
+        """Register WebSocket routes for room management."""
+        # WebSocket module uses WebSocket events for room management
+        # All room operations are handled via WebSocket events
+        custom_log("WebSocket module routes registered")
+
+
+
+
 
     def health_check(self) -> Dict[str, Any]:
         """

@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:provider/provider.dart';
 import 'dart:convert';
 import '../core/00_base/screen_base.dart';
 import '../utils/consts/config.dart';
 import '../modules/login_module/login_module.dart';
 import '../core/managers/module_manager.dart';
+import '../core/managers/websocket_manager.dart';
 
 class WebSocketScreen extends BaseScreen {
   const WebSocketScreen({Key? key}) : super(key: key);
@@ -17,7 +18,6 @@ class WebSocketScreen extends BaseScreen {
 }
 
 class _WebSocketScreenState extends BaseScreenState<WebSocketScreen> {
-  IO.Socket? socket;
   bool isConnected = false;
   List<String> messages = [];
   String connectionStatus = 'Disconnected';
@@ -33,6 +33,9 @@ class _WebSocketScreenState extends BaseScreenState<WebSocketScreen> {
 
   // Module manager for accessing LoginModule
   final ModuleManager _moduleManager = ModuleManager();
+  
+  // WebSocket manager from provider
+  WebSocketManager? _websocketManager;
 
   @override
   void initState() {
@@ -43,213 +46,160 @@ class _WebSocketScreenState extends BaseScreenState<WebSocketScreen> {
   void _initializeSocket() async {
     log.info('🔌 Initializing WebSocket connection to external app...');
     
-    // Get JWT token from login module for authentication
-    final loginModule = _moduleManager.getModuleByType<LoginModule>();
-    if (loginModule == null) {
-      log.error('❌ Login module not available for WebSocket authentication');
-      setState(() {
-        messages.add('❌ Login module not available');
-      });
-      return;
-    }
+    // Get the WebSocket manager from provider
+    _websocketManager = Provider.of<WebSocketManager>(context, listen: false);
     
-    // Check if user has valid JWT token
-    final hasToken = await loginModule.hasValidToken();
-    if (!hasToken) {
-      log.error('❌ No valid JWT token available for WebSocket authentication');
-      setState(() {
-        messages.add('❌ Please login first to get JWT token for WebSocket authentication');
-      });
-      return;
-    }
-    
-    // Get the JWT token
-    final authToken = await loginModule.getCurrentToken();
-    if (authToken == null) {
-      log.error('❌ Failed to retrieve JWT token for WebSocket authentication');
-      setState(() {
-        messages.add('❌ Failed to get authentication token');
-      });
-      return;
-    }
-    
-    log.info('✅ Using JWT token for WebSocket authentication');
-    
-    // Connect to the external app WebSocket server with JWT token
-    socket = IO.io(Config.wsUrl, <String, dynamic>{
-      'transports': ['websocket'],
-      'autoConnect': false, // Don't auto-connect
-      'query': {
-        'token': authToken, // Use the JWT token for authentication
-        'client_id': 'flutter_app_${DateTime.now().millisecondsSinceEpoch}', // Add unique client ID
-        'version': '1.0.0', // Add version info
-      },
-      'auth': {
-        'token': authToken, // Also send in auth object
-      },
-    });
-
-    // Set up event listeners
-    socket!.onConnect((_) {
-      log.info('✅ WebSocket connected successfully with JWT authentication');
+    // Check if already connected
+    if (_websocketManager!.isConnected) {
+      log.info('✅ WebSocket already connected');
       setState(() {
         isConnected = true;
         connectionStatus = 'Connected';
-        sessionId = socket!.id;
-        messages.add('✅ Connected to WebSocket server with JWT authentication (ID: ${socket!.id})');
+        messages.add('✅ WebSocket already connected');
       });
-      
-      // Request session data after connection
-      socket!.emit('get_session_data', {
-        'client_id': 'flutter_app_${DateTime.now().millisecondsSinceEpoch}',
+      return;
+    }
+    
+    // Try to connect using the WebSocket manager
+    log.info('🔄 Connecting to WebSocket server...');
+    final success = await _websocketManager!.connect(context);
+    
+    if (success) {
+      log.info('✅ WebSocket connected successfully');
+      setState(() {
+        isConnected = true;
+        connectionStatus = 'Connected';
+        messages.add('✅ WebSocket connected successfully');
       });
-    });
-
-    socket!.onDisconnect((_) {
-      log.info('❌ WebSocket disconnected');
+    } else {
+      log.error('❌ WebSocket connection failed');
       setState(() {
         isConnected = false;
-        connectionStatus = 'Disconnected';
-        sessionId = null;
-        messages.add('❌ Disconnected from WebSocket server');
+        connectionStatus = 'Connection Failed';
+        messages.add('❌ WebSocket connection failed');
       });
-    });
+    }
 
-    socket!.onConnectError((error) {
-      log.error('🚨 WebSocket connection error: $error');
-      setState(() {
-        isConnected = false;
-        connectionStatus = 'Connection Error';
-        sessionId = null;
-        messages.add('🚨 Connection error: $error');
-      });
-    });
-
-    socket!.on('session_data', (data) {
-      log.info('📋 Received session data from WebSocket server');
-      setState(() {
-        sessionData = Map<String, dynamic>.from(data);
-        messages.add('📋 Received session data: ${json.encode(data)}');
-      });
-    });
-
-    socket!.on('join_room_success', (data) {
-      log.info('🏠 Successfully joined WebSocket room');
-      setState(() {
-        currentRoomId = data['room_id'] ?? '';
-        messages.add('🏠 Successfully joined room: ${json.encode(data)}');
-      });
-    });
-
-    socket!.on('join_room_error', (data) {
-      log.error('🚨 Failed to join WebSocket room: ${json.encode(data)}');
-      setState(() {
-        messages.add('🚨 Failed to join room: ${json.encode(data)}');
-      });
-    });
-
-    socket!.on('room_state', (data) {
-      log.debug('📊 Received room state update');
-      setState(() {
-        messages.add('📊 Room state update: ${json.encode(data)}');
-      });
-    });
-
-    socket!.on('message', (data) {
-      log.info('💬 Received WebSocket message');
-      setState(() {
-        messages.add('💬 Received message: ${json.encode(data)}');
-      });
-    });
-
-    socket!.on('error', (data) {
-      log.error('🚨 WebSocket error: ${json.encode(data)}');
-      setState(() {
-        messages.add('🚨 Error: ${json.encode(data)}');
-      });
-    });
-    
-    // Add authentication event listener
-    socket!.on('auth_required', (data) {
-      log.info('🔐 Authentication required');
-      setState(() {
-        messages.add('🔐 Authentication required: ${json.encode(data)}');
-      });
-    });
-    
-    socket!.on('auth_success', (data) {
-      log.info('✅ Authentication successful');
-      setState(() {
-        messages.add('✅ Authentication successful: ${json.encode(data)}');
-      });
-    });
+    // Note: Event listeners are handled by the WebSocketManager
+    // The WebSocketManager will handle all the Socket.IO events internally
   }
 
-  void _connect() {
-    if (socket != null && !isConnected) {
+  void _connect() async {
+    // Ensure WebSocketManager is initialized
+    if (_websocketManager == null) {
+      log.info('🔄 WebSocketManager is null - reinitializing...');
+      _websocketManager = Provider.of<WebSocketManager>(context, listen: false);
+    }
+    
+    if (_websocketManager != null && !isConnected) {
       log.info('🚀 Attempting to connect to WebSocket server...');
-      socket!.connect();
+      final success = await _websocketManager!.connect(context);
+      if (success) {
+        setState(() {
+          isConnected = true;
+          connectionStatus = 'Connected';
+          messages.add('✅ Connected to WebSocket server');
+        });
+      } else {
+        setState(() {
+          isConnected = false;
+          connectionStatus = 'Connection Failed';
+          messages.add('❌ Failed to connect to WebSocket server');
+        });
+      }
     }
   }
 
   void _disconnect() {
     log.info('🔌 Manually disconnecting WebSocket...');
-    socket?.disconnect();
+    _websocketManager?.disconnect();
+    setState(() {
+      isConnected = false;
+      connectionStatus = 'Disconnected';
+      messages.add('🔌 Disconnected from WebSocket server');
+    });
   }
 
-  void _joinRoom() {
+  void _joinRoom() async {
     final roomId = _roomIdController.text.trim();
     if (roomId.isEmpty) {
       messages.add('⚠️ Please enter a room ID');
       return;
     }
     
-    if (socket != null && isConnected) {
+    // Ensure WebSocketManager is initialized
+    if (_websocketManager == null) {
+      log.info('🔄 WebSocketManager is null - reinitializing...');
+      _websocketManager = Provider.of<WebSocketManager>(context, listen: false);
+    }
+    
+    if (_websocketManager != null && isConnected) {
       log.info('🏠 Attempting to join room: $roomId');
-      socket!.emit('join_room', {'room_id': roomId});
-      messages.add('🏠 Attempting to join room: $roomId');
+      final result = await _websocketManager!.joinRoom(roomId);
+      if (result['success'] != null) {
+        messages.add('🏠 Successfully joined room: $roomId');
+        setState(() {
+          currentRoomId = roomId;
+        });
+      } else {
+        messages.add('🚨 Failed to join room: ${result['error']}');
+      }
     } else {
       log.error('🚨 Cannot join room: WebSocket not connected');
       messages.add('🚨 Cannot join room: WebSocket not connected');
     }
   }
 
-  void _sendMessage() {
+  void _sendMessage() async {
     final message = _customMessageController.text.trim();
     if (message.isEmpty) {
       messages.add('⚠️ Please enter a message');
       return;
     }
     
-    if (socket != null && isConnected) {
+    // Ensure WebSocketManager is initialized
+    if (_websocketManager == null) {
+      log.info('🔄 WebSocketManager is null - reinitializing...');
+      _websocketManager = Provider.of<WebSocketManager>(context, listen: false);
+    }
+    
+    if (_websocketManager != null && isConnected) {
       log.info('💬 Sending WebSocket message: $message');
-      socket!.emit('message', {
-        'room_id': currentRoomId.isNotEmpty ? currentRoomId : 'test_room',
-        'message': message,
-      });
-      messages.add('💬 Sent message: $message');
-      _customMessageController.clear(); // Clear the input
+      final result = await _websocketManager!.sendMessage(message);
+      if (result['success'] != null) {
+        messages.add('💬 Sent message: $message');
+        _customMessageController.clear(); // Clear the input
+      } else {
+        messages.add('🚨 Failed to send message: ${result['error']}');
+      }
     } else {
       log.error('🚨 Cannot send message: WebSocket not connected');
       messages.add('🚨 Cannot send message: WebSocket not connected');
     }
   }
 
-  void _sendTestMessage() {
+  void _sendTestMessage() async {
     final message = _messageController.text.trim();
     if (message.isEmpty) {
       messages.add('⚠️ Please enter a test message');
       return;
     }
     
-    if (socket != null && isConnected) {
+    // Ensure WebSocketManager is initialized
+    if (_websocketManager == null) {
+      log.info('🔄 WebSocketManager is null - reinitializing...');
+      _websocketManager = Provider.of<WebSocketManager>(context, listen: false);
+    }
+    
+    if (_websocketManager != null && isConnected) {
       log.info('💬 Sending test message: $message');
-      socket!.emit('message', {
-        'room_id': currentRoomId.isNotEmpty ? currentRoomId : 'test_room',
-        'message': message,
-      });
-      messages.add('💬 Sent test message: $message');
-      _messageController.clear(); // Clear the input
+      final result = await _websocketManager!.sendMessage(message);
+      if (result['success'] != null) {
+        messages.add('💬 Sent test message: $message');
+        _messageController.clear(); // Clear the input
+      } else {
+        messages.add('🚨 Failed to send test message: ${result['error']}');
+      }
     } else {
       log.error('🚨 Cannot send message: WebSocket not connected');
       messages.add('🚨 Cannot send message: WebSocket not connected');
@@ -265,9 +215,8 @@ class _WebSocketScreenState extends BaseScreenState<WebSocketScreen> {
 
   @override
   void dispose() {
-    log.info('🔌 Disposing WebSocket connection');
-    socket?.disconnect();
-    socket?.dispose();
+    log.info('🔌 Disposing WebSocket screen (keeping connection alive)');
+    // Don't disconnect the WebSocket manager - keep it alive for other screens
     _roomIdController.dispose();
     _messageController.dispose();
     _customMessageController.dispose();
