@@ -1,33 +1,42 @@
 import 'package:flutter/material.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
-import 'package:provider/provider.dart';
+import 'dart:async';
+import 'dart:convert';
 import '../../tools/logging/logger.dart';
-import '../managers/state_manager.dart';
 import '../../utils/consts/config.dart';
 import '../../modules/login_module/login_module.dart';
 import '../managers/module_manager.dart';
-import 'dart:async';
-import 'dart:convert';
+import '../models/websocket_events.dart';
 
 class WebSocketManager {
   static final WebSocketManager _instance = WebSocketManager._internal();
-  factory WebSocketManager() => _instance;
-  WebSocketManager._internal();
+  factory WebSocketManager() {
+    Logger().info("🔍 WebSocketManager factory called - returning singleton instance");
+    return _instance;
+  }
+  WebSocketManager._internal() {
+    Logger().info("🔍 WebSocketManager singleton instance created");
+  }
 
   static final Logger _log = Logger();
   
   IO.Socket? _socket;
   bool _isInitialized = false;
+  bool _isConnected = false; // Track connection state explicitly
+  bool _isConnecting = false; // Track if we're in the process of connecting
+  
+  // Event streams for UI updates
+  final StreamController<WebSocketEvent> _eventController = StreamController<WebSocketEvent>.broadcast();
+  final StreamController<ConnectionStatusEvent> _connectionController = StreamController<ConnectionStatusEvent>.broadcast();
+  final StreamController<MessageEvent> _messageController = StreamController<MessageEvent>.broadcast();
+  final StreamController<RoomEvent> _roomController = StreamController<RoomEvent>.broadcast();
+  final StreamController<ErrorEvent> _errorController = StreamController<ErrorEvent>.broadcast();
   
   // Event handling
-  final StreamController<Map<String, dynamic>> _eventStreamController = StreamController<Map<String, dynamic>>.broadcast();
   final Map<String, Function(Map<String, dynamic>)> _eventHandlers = {};
   
   // Token management
   Timer? _tokenRefreshTimer;
-  
-  // State management
-  Map<String, dynamic>? _pendingStateUpdate;
   
   // Module manager for accessing LoginModule
   final ModuleManager _moduleManager = ModuleManager();
@@ -35,41 +44,74 @@ class WebSocketManager {
   // Getters
   IO.Socket? get socket => _socket;
   bool get isInitialized => _isInitialized;
-  Stream<Map<String, dynamic>> get eventStream => _eventStreamController.stream;
+  
+  // Event streams for UI
+  Stream<WebSocketEvent> get events => _eventController.stream;
+  Stream<ConnectionStatusEvent> get connectionStatus => _connectionController.stream;
+  Stream<MessageEvent> get messages => _messageController.stream;
+  Stream<RoomEvent> get roomEvents => _roomController.stream;
+  Stream<ErrorEvent> get errors => _errorController.stream;
+  
+  // Static getter for easy access
+  static WebSocketManager get instance {
+    Logger().info("🔍 WebSocketManager.instance getter called");
+    return _instance;
+  }
+
+  /// Check if connected - direct socket check (no context needed)
+  bool get isConnected {
+    // Use both our tracked state and socket state for reliability
+    final socketConnected = _socket?.connected ?? false;
+    
+    // If socket is connected but our tracked state is false, update it
+    if (socketConnected && !_isConnected) {
+      _log.info("🔍 Fixing tracked state: socket is connected but tracked state is false");
+      _isConnected = true;
+      _isConnecting = false; // We're no longer connecting
+    }
+    
+    // If we have a socket but it's not connected, but we think we're connected, reset
+    if (_socket != null && !socketConnected && _isConnected) {
+      _log.info("🔍 Fixing tracked state: socket is not connected but tracked state is true");
+      _isConnected = false;
+    }
+    
+    final connected = _isConnected && socketConnected;
+    _log.info("🔍 Connection check: tracked=$_isConnected, socket=$socketConnected, connecting=$_isConnecting, final=$connected, socket_id=${_socket?.id}");
+    
+    return connected;
+  }
+
+  /// Check if we're in the process of connecting
+  bool get isConnecting => _isConnecting;
+
+  /// Force refresh connection state (for debugging)
+  void _refreshConnectionState() {
+    final socketConnected = _socket?.connected ?? false;
+    if (socketConnected != _isConnected) {
+      _log.info("🔍 Refreshing connection state: socket=$socketConnected, tracked=$_isConnected");
+      _isConnected = socketConnected;
+    }
+  }
 
   /// Initialize the WebSocket manager
-  Future<bool> initialize(BuildContext context) async {
+  Future<bool> initialize() async {
     if (_isInitialized) {
       _log.info("✅ WebSocket manager already initialized");
-      return isConnectedWithContext(context);
+      return isConnected;
     }
 
     try {
       _log.info("🔄 Initializing WebSocket manager...");
       
-      // Register websocket state in StateManager if not already registered
-      final stateManager = Provider.of<StateManager>(context, listen: false);
-      if (!stateManager.isPluginStateRegistered("websocket")) {
-        stateManager.registerPluginState("websocket", {
-          'connected': false,
-          'sessionId': null,
-          'userId': null,
-          'username': null,
-          'currentRoomId': null,
-          'rooms': {},
-          'sessionRooms': {},
-          'error': null,
-          'connectionTime': null,
-          'lastActivity': null,
-        });
-        _log.info("✅ Registered websocket state in StateManager");
-      }
+      // Check if socket is already connected
+      _log.info("🔍 Checking socket connection in initialize: socket=${_socket != null}, connected=${_socket?.connected ?? false}, tracked=$_isConnected");
       
-      // Check if we already have a connection from StateManager
-      final websocketState = stateManager.getPluginState<Map<String, dynamic>>("websocket");
+      // Refresh connection state before checking
+      _refreshConnectionState();
       
-      if (websocketState != null && websocketState['connected'] == true) {
-        _log.info("✅ Using existing WebSocket connection from StateManager");
+      if (_socket != null && _socket!.connected && _isConnected) {
+        _log.info("✅ WebSocket socket is already connected");
         _isInitialized = true;
         return true;
       }
@@ -98,6 +140,7 @@ class WebSocketManager {
       _log.info("✅ Using JWT token for WebSocket authentication");
       
       // Create Socket.IO connection
+      _log.info("🔍 Creating new Socket.IO connection...");
       _socket = IO.io(Config.wsUrl, <String, dynamic>{
         'transports': ['websocket'],
         'autoConnect': false,
@@ -110,6 +153,7 @@ class WebSocketManager {
           'token': authToken,
         },
       });
+      _log.info("🔍 Socket created: ${_socket != null}");
 
       // Set up event listeners
       _setupEventHandlers();
@@ -131,54 +175,159 @@ class WebSocketManager {
   void _setupEventHandlers() {
     if (_socket == null) return;
     
-    _socket!.onConnect((_) {
+    // Use 'connect' event instead of onConnect to avoid conflicts with one-time listeners
+    _socket!.on('connect', (_) {
       _log.info("✅ WebSocket connected successfully");
       _log.info("✅ Session ID: ${_socket!.id}");
+      _log.info("🔍 Socket state after connect: connected=${_socket!.connected}");
+      
+      // Update our tracked connection state
+      _isConnected = true;
+      _isConnecting = false; // Reset connecting state
+      _log.info("🔍 Updated tracked connection state: $_isConnected");
+      
+      // Emit connection event
+      final event = ConnectionStatusEvent(
+        status: ConnectionStatus.connected,
+        sessionId: _socket!.id,
+      );
+      _connectionController.add(event);
+      _eventController.add(event);
+      
       _handleEvent('connect', {});
     });
 
     _socket!.onDisconnect((_) {
       _log.info("❌ WebSocket disconnected");
+      _log.info("🔍 Socket state after disconnect: connected=${_socket!.connected}");
+      
+      // Update our tracked connection state
+      _isConnected = false;
+      
+      // Emit disconnection event
+      final event = ConnectionStatusEvent(
+        status: ConnectionStatus.disconnected,
+      );
+      _connectionController.add(event);
+      _eventController.add(event);
+      
       _handleEvent('disconnect', {});
     });
 
-    _socket!.onConnectError((error) {
+    // Use 'connect_error' event instead of onConnectError to avoid conflicts
+    _socket!.on('connect_error', (error) {
       _log.error("🚨 WebSocket connection error: $error");
+      
+      // Update our tracked connection state
+      _isConnected = false;
+      _isConnecting = false; // Reset connecting state
+      
+      // Emit error event
+      final event = ConnectionStatusEvent(
+        status: ConnectionStatus.error,
+        error: error.toString(),
+      );
+      _connectionController.add(event);
+      _eventController.add(event);
+      
       _handleEvent('error', {'error': error.toString()});
     });
 
     _socket!.on('session_data', (data) {
       _log.info("📋 Received session data from WebSocket server");
+      
+      // Emit session data event
+      final event = SessionDataEvent(data);
+      _eventController.add(event);
+      
       _handleEvent('session_update', data);
     });
 
     _socket!.on('join_room_success', (data) {
       _log.info("🏠 Successfully joined room: $data");
+      
+      // Emit room event
+      final event = RoomEvent(
+        roomId: data['room_id'] ?? '',
+        roomData: data,
+        action: 'joined',
+      );
+      _roomController.add(event);
+      _eventController.add(event);
+      
       _handleEvent('room_joined', data);
     });
 
     _socket!.on('join_room_error', (data) {
       _log.error("🚨 Failed to join room: $data");
+      
+      // Emit error event
+      final errorEvent = ErrorEvent(
+        'Failed to join room',
+        details: data.toString(),
+      );
+      _errorController.add(errorEvent);
+      _eventController.add(errorEvent);
+      
       _handleEvent('join_room_error', data);
     });
 
     _socket!.on('create_room_success', (data) {
       _log.info("🏠 Successfully created room");
+      
+      // Emit room event
+      final event = RoomEvent(
+        roomId: data['room_id'] ?? '',
+        roomData: data,
+        action: 'created',
+      );
+      _roomController.add(event);
+      _eventController.add(event);
+      
       _handleEvent('create_room_success', data);
     });
 
     _socket!.on('create_room_error', (data) {
       _log.error("🚨 Failed to create room: $data");
+      
+      // Emit error event
+      final errorEvent = ErrorEvent(
+        'Failed to create room',
+        details: data.toString(),
+      );
+      _errorController.add(errorEvent);
+      _eventController.add(errorEvent);
+      
       _handleEvent('create_room_error', data);
     });
 
     _socket!.on('message', (data) {
       _log.info("💬 Received message: $data");
+      
+      // Emit message event
+      final event = MessageEvent(
+        roomId: data['room_id'] ?? '',
+        message: data['message'] ?? '',
+        sender: data['sender'] ?? 'unknown',
+        additionalData: data,
+      );
+      _messageController.add(event);
+      _eventController.add(event);
+      
       _handleEvent('message', data);
     });
 
     _socket!.on('error', (data) {
       _log.error("🚨 WebSocket error: $data");
+      
+      // Emit error event
+      final errorEvent = ErrorEvent(
+        'WebSocket error',
+        details: data.toString(),
+      );
+      _errorController.add(errorEvent);
+      _eventController.add(errorEvent);
+      
       _handleEvent('error', data);
     });
 
@@ -186,6 +335,11 @@ class WebSocketManager {
     _eventHandlers.forEach((event, handler) {
       _socket!.on(event, (data) {
         _log.info("📨 Received custom event '$event': $data");
+        
+        // Emit custom event
+        final customEvent = CustomEvent(event, data);
+        _eventController.add(customEvent);
+        
         _handleEvent(event, data);
       });
     });
@@ -193,101 +347,10 @@ class WebSocketManager {
 
   /// Handle events and broadcast to stream
   void _handleEvent(String event, Map<String, dynamic> data) {
-    // Add event type to data
-    final eventData = {
-      'event': event,
-      ...data
-    };
-
-    // Update StateManager based on event type (single source of truth)
-    switch (event) {
-      case 'connect':
-        _updateStateManager({
-          'connected': true,
-          'sessionId': _socket?.id,
-          'connectionTime': DateTime.now().toIso8601String(),
-          'error': null
-        });
-        break;
-      case 'disconnect':
-        _updateStateManager({
-          'connected': false,
-          'sessionId': null,
-          'currentRoomId': null,
-          'error': null
-        });
-        break;
-      case 'session_update':
-        _updateStateManager({
-          'userId': data['user_id'],
-          'username': data['username'],
-          'lastActivity': DateTime.now().toIso8601String(),
-          'error': null
-        });
-        break;
-      case 'room_joined':
-        _updateStateManager({
-          'currentRoomId': data['room_id'],
-          'error': null
-        });
-        break;
-      case 'error':
-        _updateStateManager({
-          'error': data['error'],
-          'connected': false
-        });
-        break;
-    }
-
     // Call registered handler if exists
     final handler = _eventHandlers[event];
     if (handler != null) {
-      handler(eventData);
-    }
-
-    // Broadcast event to stream
-    _eventStreamController.add(eventData);
-  }
-
-  /// Update StateManager with connection state
-  void _updateStateManager(Map<String, dynamic> newState) {
-    try {
-      // We need to get the StateManager from the current context
-      // For now, we'll store the state locally and update when context is available
-      _pendingStateUpdate = newState;
-    } catch (e) {
-      _log.error("❌ Error updating StateManager: $e");
-    }
-  }
-
-  /// Update StateManager with current context
-  void _updateStateManagerWithContext(BuildContext context) {
-    if (_pendingStateUpdate != null) {
-      try {
-        final stateManager = Provider.of<StateManager>(context, listen: false);
-        
-        // Ensure websocket state is registered
-        if (!stateManager.isPluginStateRegistered("websocket")) {
-          stateManager.registerPluginState("websocket", {
-            'connected': false,
-            'sessionId': null,
-            'userId': null,
-            'username': null,
-            'currentRoomId': null,
-            'rooms': {},
-            'sessionRooms': {},
-            'error': null,
-            'connectionTime': null,
-            'lastActivity': null,
-          });
-        }
-        
-        final currentState = stateManager.getPluginState<Map<String, dynamic>>("websocket") ?? {};
-        stateManager.updatePluginState("websocket", {...currentState, ..._pendingStateUpdate!});
-        _pendingStateUpdate = null;
-      } catch (e) {
-        _log.error("❌ Error updating StateManager with context: $e");
-      }
+      handler(data);
     }
   }
 
@@ -320,115 +383,109 @@ class WebSocketManager {
   }
 
   /// Connect to WebSocket server
-  Future<bool> connect(BuildContext context) async {
+  Future<bool> connect() async {
     if (!_isInitialized) {
-      return await initialize(context);
+      final initialized = await initialize();
+      if (!initialized) {
+        return false;
+      }
+      // Continue with connection after initialization
     }
 
-    if (isConnectedWithContext(context)) {
-      _log.info("✅ WebSocket already connected");
-      return true;
-    }
-
-    // Ensure websocket state is registered
-    final stateManager = Provider.of<StateManager>(context, listen: false);
-    if (!stateManager.isPluginStateRegistered("websocket")) {
-      stateManager.registerPluginState("websocket", {
-        'connected': false,
-        'sessionId': null,
-        'userId': null,
-        'username': null,
-        'currentRoomId': null,
-        'rooms': {},
-        'sessionRooms': {},
-        'error': null,
-        'connectionTime': null,
-        'lastActivity': null,
-      });
-    }
-
-    // Check if we already have a connection from StateManager
-    final websocketState = stateManager.getPluginState<Map<String, dynamic>>("websocket");
+    // Check if the socket is already connected
+    _log.info("🔍 Checking if socket is already connected...");
     
-    if (websocketState != null && websocketState['connected'] == true) {
-      _log.info("✅ Using existing WebSocket connection from StateManager");
+    // Refresh connection state before checking
+    _refreshConnectionState();
+    
+    if (isConnected) {
+      _log.info("✅ WebSocket socket is already connected");
       return true;
     }
+    
+    // Check if we're already connecting
+    if (_isConnecting) {
+      _log.info("🔄 WebSocket is already connecting, waiting...");
+      return false;
+    }
+    
+    _log.info("🔍 Socket not connected, proceeding with new connection...");
+    _log.info("🔍 Connection state: tracked=$_isConnected, socket=${_socket?.connected ?? false}");
 
     try {
       _log.info("🔄 Connecting to WebSocket server...");
       
+      // Set connecting state
+      _isConnecting = true;
+      
       if (_socket == null) {
         _log.error("❌ Socket not initialized");
+        _isConnecting = false;
         return false;
       }
       
+      // Emit connecting event
+      final connectingEvent = ConnectionStatusEvent(
+        status: ConnectionStatus.connecting,
+      );
+      _connectionController.add(connectingEvent);
+      _eventController.add(connectingEvent);
+      
+      // Create a completer to wait for the connection event
+      final completer = Completer<bool>();
+      
+      // Set up a one-time listener for the connect event
+      void onConnect(dynamic _) {
+        _log.info("✅ WebSocket connected successfully");
+        _log.info("✅ Session ID: ${_socket!.id}");
+        
+        // Update our tracked connection state
+        _isConnected = true;
+        _isConnecting = false; // Reset connecting state
+        
+        completer.complete(true);
+      }
+      
+      // Set up a one-time listener for connection errors
+      void onConnectError(dynamic error) {
+        _log.error("❌ WebSocket connection error: $error");
+        
+        // Update our tracked connection state
+        _isConnected = false;
+        _isConnecting = false;
+        
+        completer.complete(false);
+      }
+      
+      // Add one-time event listeners (these will be removed after use)
+      _socket!.once('connect', onConnect);
+      _socket!.once('connect_error', onConnectError);
+      
+      // Start connection
       _socket!.connect();
       
-      // Wait for connection
-      await Future.delayed(const Duration(seconds: 2));
-      
-      // Check if socket is actually connected
-      if (_socket!.connected) {
-        _log.info("✅ WebSocket connected successfully");
+      // Wait for connection with timeout
+      try {
+        final result = await completer.future.timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            _log.error("❌ WebSocket connection timeout");
+            _isConnecting = false; // Reset connecting state on timeout
+            return false;
+          },
+        );
         
-        // Update StateManager with connection status
-        final currentState = stateManager.getPluginState<Map<String, dynamic>>("websocket") ?? {};
-        stateManager.updatePluginState("websocket", {
-          ...currentState,
-          'connected': true,
-          'sessionId': _socket!.id,
-          'connectionTime': DateTime.now().toIso8601String(),
-          'error': null
-        });
-        
-        // Update any pending state updates
-        _updateStateManagerWithContext(context);
-        
-        return true;
-      } else {
-        _log.error("❌ WebSocket connection failed");
+        return result;
+      } catch (e) {
+        _log.error("❌ WebSocket connection exception: $e");
+        _isConnecting = false; // Reset connecting state on exception
         return false;
       }
+      
     } catch (e) {
       _log.error("❌ Error connecting to WebSocket: $e");
+      _isConnecting = false; // Reset connecting state on error
       return false;
-    }
-  }
-
-  /// Check if connected using StateManager as primary source
-  bool isConnectedWithContext(BuildContext context) {
-    try {
-      final stateManager = Provider.of<StateManager>(context, listen: false);
-      final websocketState = stateManager.getPluginState<Map<String, dynamic>>("websocket");
-      return websocketState?['connected'] ?? false;
-    } catch (e) {
-      _log.error("❌ Error checking connection state: $e");
-      return false;
-    }
-  }
-
-  /// Get session ID from StateManager
-  String? getSessionId(BuildContext context) {
-    try {
-      final stateManager = Provider.of<StateManager>(context, listen: false);
-      final websocketState = stateManager.getPluginState<Map<String, dynamic>>("websocket");
-      return websocketState?['sessionId'];
-    } catch (e) {
-      _log.error("❌ Error getting session ID: $e");
-      return null;
-    }
-  }
-
-  /// Get current room ID from StateManager
-  String? getCurrentRoomId(BuildContext context) {
-    try {
-      final stateManager = Provider.of<StateManager>(context, listen: false);
-      final websocketState = stateManager.getPluginState<Map<String, dynamic>>("websocket");
-      return websocketState?['currentRoomId'];
-    } catch (e) {
-      _log.error("❌ Error getting current room ID: $e");
-      return null;
     }
   }
 
@@ -438,13 +495,8 @@ class WebSocketManager {
       _socket?.disconnect();
       _stopTokenRefreshTimer();
       
-      // Update StateManager with disconnect status
-      _updateStateManager({
-        'connected': false,
-        'sessionId': null,
-        'currentRoomId': null,
-        'error': null
-      });
+      // Update our tracked connection state
+      _isConnected = false;
       
       _log.info("🔌 WebSocket disconnected");
     } catch (e) {
@@ -709,38 +761,15 @@ class WebSocketManager {
   }
 
   /// Get current connection status
-  Map<String, dynamic> getStatus(BuildContext context) {
-    try {
-      final stateManager = Provider.of<StateManager>(context, listen: false);
-      final websocketState = stateManager.getPluginState<Map<String, dynamic>>("websocket");
-      
-      return {
-        'isInitialized': _isInitialized,
-        'connected': websocketState?['connected'] ?? false,
-        'sessionId': websocketState?['sessionId'],
-        'userId': websocketState?['userId'],
-        'username': websocketState?['username'],
-        'currentRoomId': websocketState?['currentRoomId'],
-        'rooms': websocketState?['rooms'] ?? {},
-        'sessionRooms': websocketState?['sessionRooms'] ?? {},
-        'error': websocketState?['error'],
-        'connectionTime': websocketState?['connectionTime'],
-        'lastActivity': websocketState?['lastActivity'],
-      };
-    } catch (e) {
-      _log.error("❌ Error getting status: $e");
-      return {
-        'isInitialized': _isInitialized,
-        'connected': false,
-        'sessionId': null,
-        'userId': null,
-        'username': null,
-        'currentRoomId': null,
-        'rooms': {},
-        'sessionRooms': {},
-        'error': 'Failed to get status from StateManager',
-      };
-    }
+  Map<String, dynamic> getStatus() {
+    return {
+      'isInitialized': _isInitialized,
+      'connected': isConnected,
+      'sessionId': _socket?.id,
+      'error': null,
+      'connectionTime': null,
+      'lastActivity': null,
+    };
   }
 
   /// Dispose of the WebSocket manager
@@ -749,7 +778,11 @@ class WebSocketManager {
       _socket?.disconnect();
       _socket = null;
       _stopTokenRefreshTimer();
-      _eventStreamController.close();
+      _eventController.close();
+      _connectionController.close();
+      _messageController.close();
+      _roomController.close();
+      _errorController.close();
       _eventHandlers.clear();
       _isInitialized = false;
       

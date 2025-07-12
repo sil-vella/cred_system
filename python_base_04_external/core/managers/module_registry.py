@@ -87,11 +87,8 @@ class ModuleRegistry:
         dependencies = {
             "communications": [],  # Core API - no dependencies
             "user_management": ["communications"],  # Needs API infrastructure
-            "system_actions": ["communications"],  # Needs API infrastructure
             "wallet": ["communications", "user_management"],  # Needs API and users
             "transactions": ["communications", "user_management", "wallet"],  # Needs API, users, and wallet
-            "stripe": ["communications", "user_management"],  # Needs API and users
-            "websockets": ["communications"],  # Needs API infrastructure for WebSocket support
         }
         
         custom_log(f"Module dependencies defined: {dependencies}")
@@ -116,13 +113,6 @@ class ModuleRegistry:
                 "health_check_enabled": True,
                 "session_timeout": 3600,
             },
-
-            "system_actions": {
-                "enabled": True,
-                "priority": 4,
-                "health_check_enabled": True,
-                "user_actions_manager": True,
-            },
             "wallet": {
                 "enabled": True,
                 "priority": 5,
@@ -134,19 +124,6 @@ class ModuleRegistry:
                 "priority": 6,  
                 "health_check_enabled": True,
                 "async_processing": False,
-            },
-            "stripe": {
-                "enabled": True,
-                "priority": 7,
-                "health_check_enabled": True,
-                "payment_processing": True,
-            },
-            "websockets": {
-                "enabled": True,
-                "priority": 8,
-                "health_check_enabled": True,
-                "websocket_support": True,
-                "cors_enabled": True,
             },
         }
     

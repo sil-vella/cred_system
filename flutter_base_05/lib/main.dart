@@ -7,7 +7,7 @@ import 'core/managers/module_registry.dart';
 import 'core/managers/services_manager.dart';
 import 'core/managers/state_manager.dart';
 import 'core/managers/navigation_manager.dart';
-import 'core/managers/websocket_manager.dart';
+
 import 'utils/consts/config.dart';
 
 void main() async {
@@ -38,7 +38,6 @@ void main() async {
         ChangeNotifierProvider(create: (_) => servicesManager),
         ChangeNotifierProvider(create: (_) => StateManager()),
         ChangeNotifierProvider(create: (_) => NavigationManager()),
-        Provider<WebSocketManager>(create: (_) => WebSocketManager()),
       ],
       child: const MyApp(),
     ),

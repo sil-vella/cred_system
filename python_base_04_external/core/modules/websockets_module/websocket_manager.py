@@ -494,7 +494,7 @@ class WebSocketManager:
                         custom_log(f"Error in join handler for session {request.sid}: {str(e)}")
                         self.socketio.emit('error', {'message': str(e)}, room=request.sid)
 
-            custom_log("WebSocket support initialized with Flask app")
+                custom_log("WebSocket support initialized with Flask app")
         except Exception as e:
             custom_log(f"Error initializing WebSocket support: {str(e)}")
 
