@@ -49,7 +49,10 @@ class StateManager with ChangeNotifier {
     if (!_pluginStates.containsKey(pluginKey)) {
       _pluginStates[pluginKey] = PluginState(state: initialState);
       _log.info("✅ Registered plugin state for key: $pluginKey");
-      notifyListeners();
+      _log.info("📊 Current app state after registration:");
+      _logAppState();
+      // Use Future.microtask to avoid calling notifyListeners during build
+      Future.microtask(() => notifyListeners());
     } else {
       _log.error("⚠️ Plugin state for '$pluginKey' is already registered.");
     }
@@ -60,7 +63,10 @@ class StateManager with ChangeNotifier {
     if (_pluginStates.containsKey(pluginKey)) {
       _pluginStates.remove(pluginKey);
       _log.info("🗑 Unregistered state for key: $pluginKey");
-      notifyListeners();
+      _log.info("📊 Current app state after unregistration:");
+      _logAppState();
+      // Use Future.microtask to avoid calling notifyListeners during build
+      Future.microtask(() => notifyListeners());
     } else {
       _log.error("⚠️ Plugin state for '$pluginKey' does not exist.");
     }
@@ -86,6 +92,16 @@ class StateManager with ChangeNotifier {
     return null;
   }
 
+  /// Log the entire app state for debugging
+  void _logAppState() {
+    final allStates = getAllStates();
+    _log.info("📊 Complete App State:");
+    _log.info("🔧 Plugin States: ${allStates['plugin_states']}");
+    _log.info("📱 Main App State: ${allStates['main_app_state']}");
+    _log.info("📈 Total Plugin States: ${getPluginStateCount()}");
+    _log.info("🔑 Registered Keys: ${getRegisteredPluginKeys()}");
+  }
+
   void updatePluginState(String pluginKey, Map<String, dynamic> newState, {bool force = false}) {
     if (!_pluginStates.containsKey(pluginKey)) {
       _log.error("❌ Cannot update state for '$pluginKey' - it is not registered.");
@@ -99,7 +115,10 @@ class StateManager with ChangeNotifier {
       final newMergedState = existingState.merge(newState);
       _pluginStates[pluginKey] = newMergedState;
       _log.info("✅ Updated state for plugin '$pluginKey'");
-      notifyListeners();
+      _log.info("📊 Current app state after update:");
+      _logAppState();
+      // Use Future.microtask to avoid calling notifyListeners during build
+      Future.microtask(() => notifyListeners());
     } else {
       _log.error("❌ Cannot update state for '$pluginKey' - existing state is null");
     }
@@ -138,7 +157,10 @@ class StateManager with ChangeNotifier {
   void setMainAppState(Map<String, dynamic> initialState) {
     _mainAppState = {'main_state': 'idle', ...initialState};
     _log.info("📌 Main app state initialized: $_mainAppState");
-    notifyListeners();
+    _log.info("📊 Current app state after main app state initialization:");
+    _logAppState();
+    // Use Future.microtask to avoid calling notifyListeners during build
+    Future.microtask(() => notifyListeners());
   }
 
   Map<String, dynamic> get mainAppState => _mainAppState;
@@ -146,7 +168,10 @@ class StateManager with ChangeNotifier {
   void updateMainAppState(String key, dynamic value) {
     _mainAppState[key] = value;
     _log.info("📌 Main app state updated: key=$key, value=$value");
-    notifyListeners();
+    _log.info("📊 Current app state after main app state update:");
+    _logAppState();
+    // Use Future.microtask to avoid calling notifyListeners during build
+    Future.microtask(() => notifyListeners());
   }
 
   T? getMainAppState<T>(String key) {

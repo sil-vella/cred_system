@@ -45,9 +45,8 @@ flutter:
 
   assets:
     - assets/
-    - assets/images/gift-v-01.png
-    - assets/images/bottom-01.png
-    - assets/images/logo.png
+    - assets/images/
+    - assets/images/backgrounds/
 
 flutter_native_splash:
   color: "#ffffff" # Background color of the splash screen

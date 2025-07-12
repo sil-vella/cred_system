@@ -50,7 +50,7 @@ class _WebSocketScreenState extends BaseScreenState<WebSocketScreen> {
     _websocketManager = Provider.of<WebSocketManager>(context, listen: false);
     
     // Check if already connected
-    if (_websocketManager!.isConnected) {
+    if (_websocketManager!.isConnectedWithContext(context)) {
       log.info('✅ WebSocket already connected');
       setState(() {
         isConnected = true;
@@ -135,7 +135,7 @@ class _WebSocketScreenState extends BaseScreenState<WebSocketScreen> {
     
     if (_websocketManager != null && isConnected) {
       log.info('🏠 Attempting to join room: $roomId');
-      final result = await _websocketManager!.joinRoom(roomId);
+      final result = await _websocketManager!.joinRoom(roomId, 'current_user');
       if (result['success'] != null) {
         messages.add('🏠 Successfully joined room: $roomId');
         setState(() {
@@ -165,7 +165,7 @@ class _WebSocketScreenState extends BaseScreenState<WebSocketScreen> {
     
     if (_websocketManager != null && isConnected) {
       log.info('💬 Sending WebSocket message: $message');
-      final result = await _websocketManager!.sendMessage(message);
+      final result = await _websocketManager!.sendMessage(currentRoomId, message);
       if (result['success'] != null) {
         messages.add('💬 Sent message: $message');
         _customMessageController.clear(); // Clear the input
@@ -193,7 +193,7 @@ class _WebSocketScreenState extends BaseScreenState<WebSocketScreen> {
     
     if (_websocketManager != null && isConnected) {
       log.info('💬 Sending test message: $message');
-      final result = await _websocketManager!.sendMessage(message);
+      final result = await _websocketManager!.sendMessage(currentRoomId, message);
       if (result['success'] != null) {
         messages.add('💬 Sent test message: $message');
         _messageController.clear(); // Clear the input

@@ -18,19 +18,10 @@ class WebSocketManager {
   
   IO.Socket? _socket;
   bool _isInitialized = false;
-  bool _isConnected = false;
-  String? _sessionId;
-  String? _userId;
-  String? _username;
-  String? _currentRoomId;
   
   // Event handling
   final StreamController<Map<String, dynamic>> _eventStreamController = StreamController<Map<String, dynamic>>.broadcast();
   final Map<String, Function(Map<String, dynamic>)> _eventHandlers = {};
-  
-  // Room management
-  final Map<String, Set<String>> _rooms = {};
-  final Map<String, Set<String>> _sessionRooms = {};
   
   // Token management
   Timer? _tokenRefreshTimer;
@@ -43,19 +34,14 @@ class WebSocketManager {
 
   // Getters
   IO.Socket? get socket => _socket;
-  bool get isConnected => _isConnected;
   bool get isInitialized => _isInitialized;
-  String? get sessionId => _sessionId;
-  String? get userId => _userId;
-  String? get username => _username;
-  String? get currentRoomId => _currentRoomId;
   Stream<Map<String, dynamic>> get eventStream => _eventStreamController.stream;
 
   /// Initialize the WebSocket manager
   Future<bool> initialize(BuildContext context) async {
     if (_isInitialized) {
       _log.info("✅ WebSocket manager already initialized");
-      return _isConnected;
+      return isConnectedWithContext(context);
     }
 
     try {
@@ -65,12 +51,13 @@ class WebSocketManager {
       final stateManager = Provider.of<StateManager>(context, listen: false);
       if (!stateManager.isPluginStateRegistered("websocket")) {
         stateManager.registerPluginState("websocket", {
-          'isConnected': false,
+          'connected': false,
           'sessionId': null,
           'userId': null,
           'username': null,
           'currentRoomId': null,
-          'roomState': null,
+          'rooms': {},
+          'sessionRooms': {},
           'error': null,
           'connectionTime': null,
           'lastActivity': null,
@@ -81,11 +68,9 @@ class WebSocketManager {
       // Check if we already have a connection from StateManager
       final websocketState = stateManager.getPluginState<Map<String, dynamic>>("websocket");
       
-      if (websocketState != null && websocketState['isConnected'] == true) {
+      if (websocketState != null && websocketState['connected'] == true) {
         _log.info("✅ Using existing WebSocket connection from StateManager");
         _isInitialized = true;
-        _isConnected = true;
-        _updateConnectionInfo(context);
         return true;
       }
       
@@ -148,39 +133,27 @@ class WebSocketManager {
     
     _socket!.onConnect((_) {
       _log.info("✅ WebSocket connected successfully");
-      _isConnected = true;
-      _sessionId = _socket!.id;
       _log.info("✅ Session ID: ${_socket!.id}");
       _handleEvent('connect', {});
     });
 
     _socket!.onDisconnect((_) {
       _log.info("❌ WebSocket disconnected");
-      _isConnected = false;
-      _sessionId = null;
-      _currentRoomId = null;
       _handleEvent('disconnect', {});
     });
 
     _socket!.onConnectError((error) {
       _log.error("🚨 WebSocket connection error: $error");
-      _isConnected = false;
-      _sessionId = null;
       _handleEvent('error', {'error': error.toString()});
     });
 
     _socket!.on('session_data', (data) {
       _log.info("📋 Received session data from WebSocket server");
-      // Update connection info from session data
-      if (data is Map<String, dynamic>) {
-        _userId = data['userId'];
-        _username = data['username'];
-      }
       _handleEvent('session_update', data);
     });
 
     _socket!.on('join_room_success', (data) {
-      _log.info("🏠 Successfully joined room");
+      _log.info("🏠 Successfully joined room: $data");
       _handleEvent('room_joined', data);
     });
 
@@ -226,28 +199,26 @@ class WebSocketManager {
       ...data
     };
 
-    // Update StateManager based on event type
+    // Update StateManager based on event type (single source of truth)
     switch (event) {
       case 'connect':
         _updateStateManager({
-          'isConnected': true,
-          'sessionId': _sessionId,
+          'connected': true,
+          'sessionId': _socket?.id,
           'connectionTime': DateTime.now().toIso8601String(),
           'error': null
         });
         break;
       case 'disconnect':
         _updateStateManager({
-          'isConnected': false,
+          'connected': false,
           'sessionId': null,
           'currentRoomId': null,
-          'roomState': null,
           'error': null
         });
         break;
       case 'session_update':
         _updateStateManager({
-          'sessionData': data['session_data'],
           'userId': data['user_id'],
           'username': data['username'],
           'lastActivity': DateTime.now().toIso8601String(),
@@ -257,14 +228,13 @@ class WebSocketManager {
       case 'room_joined':
         _updateStateManager({
           'currentRoomId': data['room_id'],
-          'roomState': data['room_state'],
           'error': null
         });
         break;
       case 'error':
         _updateStateManager({
           'error': data['error'],
-          'isLoading': false
+          'connected': false
         });
         break;
     }
@@ -299,12 +269,13 @@ class WebSocketManager {
         // Ensure websocket state is registered
         if (!stateManager.isPluginStateRegistered("websocket")) {
           stateManager.registerPluginState("websocket", {
-            'isConnected': false,
+            'connected': false,
             'sessionId': null,
             'userId': null,
             'username': null,
             'currentRoomId': null,
-            'roomState': null,
+            'rooms': {},
+            'sessionRooms': {},
             'error': null,
             'connectionTime': null,
             'lastActivity': null,
@@ -354,7 +325,7 @@ class WebSocketManager {
       return await initialize(context);
     }
 
-    if (_isConnected) {
+    if (isConnectedWithContext(context)) {
       _log.info("✅ WebSocket already connected");
       return true;
     }
@@ -363,12 +334,13 @@ class WebSocketManager {
     final stateManager = Provider.of<StateManager>(context, listen: false);
     if (!stateManager.isPluginStateRegistered("websocket")) {
       stateManager.registerPluginState("websocket", {
-        'isConnected': false,
+        'connected': false,
         'sessionId': null,
         'userId': null,
         'username': null,
         'currentRoomId': null,
-        'roomState': null,
+        'rooms': {},
+        'sessionRooms': {},
         'error': null,
         'connectionTime': null,
         'lastActivity': null,
@@ -378,10 +350,8 @@ class WebSocketManager {
     // Check if we already have a connection from StateManager
     final websocketState = stateManager.getPluginState<Map<String, dynamic>>("websocket");
     
-    if (websocketState != null && websocketState['isConnected'] == true) {
+    if (websocketState != null && websocketState['connected'] == true) {
       _log.info("✅ Using existing WebSocket connection from StateManager");
-      _isConnected = true;
-      _updateConnectionInfo(context);
       return true;
     }
 
@@ -398,15 +368,16 @@ class WebSocketManager {
       // Wait for connection
       await Future.delayed(const Duration(seconds: 2));
       
-      if (_isConnected) {
+      // Check if socket is actually connected
+      if (_socket!.connected) {
         _log.info("✅ WebSocket connected successfully");
         
         // Update StateManager with connection status
         final currentState = stateManager.getPluginState<Map<String, dynamic>>("websocket") ?? {};
         stateManager.updatePluginState("websocket", {
           ...currentState,
-          'isConnected': true,
-          'sessionId': _sessionId,
+          'connected': true,
+          'sessionId': _socket!.id,
           'connectionTime': DateTime.now().toIso8601String(),
           'error': null
         });
@@ -425,37 +396,39 @@ class WebSocketManager {
     }
   }
 
-  /// Update connection info from StateManager
-  void _updateConnectionInfo(BuildContext context) {
+  /// Check if connected using StateManager as primary source
+  bool isConnectedWithContext(BuildContext context) {
     try {
       final stateManager = Provider.of<StateManager>(context, listen: false);
-      
-      // Ensure websocket state is registered
-      if (!stateManager.isPluginStateRegistered("websocket")) {
-        stateManager.registerPluginState("websocket", {
-          'isConnected': false,
-          'sessionId': null,
-          'userId': null,
-          'username': null,
-          'currentRoomId': null,
-          'roomState': null,
-          'error': null,
-          'connectionTime': null,
-          'lastActivity': null,
-        });
-      }
-      
       final websocketState = stateManager.getPluginState<Map<String, dynamic>>("websocket");
-      
-      if (websocketState != null) {
-        _sessionId = websocketState['sessionId'];
-        _userId = websocketState['userId'];
-        _username = websocketState['username'];
-        _isConnected = websocketState['isConnected'] ?? false;
-        _currentRoomId = websocketState['currentRoomId'];
-      }
+      return websocketState?['connected'] ?? false;
     } catch (e) {
-      _log.error("❌ Error updating connection info: $e");
+      _log.error("❌ Error checking connection state: $e");
+      return false;
+    }
+  }
+
+  /// Get session ID from StateManager
+  String? getSessionId(BuildContext context) {
+    try {
+      final stateManager = Provider.of<StateManager>(context, listen: false);
+      final websocketState = stateManager.getPluginState<Map<String, dynamic>>("websocket");
+      return websocketState?['sessionId'];
+    } catch (e) {
+      _log.error("❌ Error getting session ID: $e");
+      return null;
+    }
+  }
+
+  /// Get current room ID from StateManager
+  String? getCurrentRoomId(BuildContext context) {
+    try {
+      final stateManager = Provider.of<StateManager>(context, listen: false);
+      final websocketState = stateManager.getPluginState<Map<String, dynamic>>("websocket");
+      return websocketState?['currentRoomId'];
+    } catch (e) {
+      _log.error("❌ Error getting current room ID: $e");
+      return null;
     }
   }
 
@@ -463,19 +436,13 @@ class WebSocketManager {
   void disconnect() {
     try {
       _socket?.disconnect();
-      _isConnected = false;
-      _sessionId = null;
-      _userId = null;
-      _username = null;
-      _currentRoomId = null;
       _stopTokenRefreshTimer();
       
       // Update StateManager with disconnect status
       _updateStateManager({
-        'isConnected': false,
+        'connected': false,
         'sessionId': null,
         'currentRoomId': null,
-        'roomState': null,
         'error': null
       });
       
@@ -487,7 +454,13 @@ class WebSocketManager {
 
   /// Create a room
   Future<Map<String, dynamic>> createRoom(String userId, [Map<String, dynamic>? roomData]) async {
-    if (!_isConnected || _socket == null) {
+    if (_socket == null) {
+      _log.error("❌ Cannot create room: Socket not initialized");
+      return {"error": "Socket not initialized"};
+    }
+    
+    // Check if socket is actually connected
+    if (!_socket!.connected) {
       _log.error("❌ Cannot create room: WebSocket not connected");
       return {"error": "WebSocket not connected"};
     }
@@ -507,11 +480,6 @@ class WebSocketManager {
       void onRoomJoined(dynamic eventData) {
         if (eventData is Map<String, dynamic>) {
           final roomId = eventData['room_id'];
-          _currentRoomId = roomId;
-          _rooms[roomId] = _rooms[roomId] ?? <String>{};
-          _rooms[roomId]!.add(_socket!.id!);
-          _sessionRooms[_socket!.id!] = _sessionRooms[_socket!.id!] ?? <String>{};
-          _sessionRooms[_socket!.id!]!.add(roomId);
           completer.complete({
             "success": "Room created successfully", 
             "data": {
@@ -525,8 +493,11 @@ class WebSocketManager {
 
       // Set up a one-time listener for create room errors
       void onError(dynamic eventData) {
-        if (eventData is Map<String, dynamic> && eventData['message']?.toString().contains('Failed to create room') == true) {
-          completer.complete({"error": eventData['message']});
+        if (eventData is Map<String, dynamic>) {
+          final message = eventData['message']?.toString() ?? '';
+          if (message.contains('Failed to create room')) {
+            completer.complete({"error": message});
+          }
         }
       }
 
@@ -558,59 +529,67 @@ class WebSocketManager {
       }
       
     } catch (e) {
-      _log.error("❌ Create room error: $e");
+      _log.error("❌ Error creating room: $e");
       return {"error": "Failed to create room: $e"};
     }
   }
 
   /// Join a room
-  Future<Map<String, dynamic>> joinRoom(String roomId, {Map<String, dynamic>? data}) async {
-    if (!_isConnected || _socket == null) {
+  Future<Map<String, dynamic>> joinRoom(String roomId, String userId) async {
+    if (_socket == null) {
+      _log.error("❌ Cannot join room: Socket not initialized");
+      return {"error": "Socket not initialized"};
+    }
+    
+    // Check if socket is actually connected
+    if (!_socket!.connected) {
       _log.error("❌ Cannot join room: WebSocket not connected");
       return {"error": "WebSocket not connected"};
     }
 
     try {
-      _log.info("🚪 Joining room: $roomId");
+      _log.info("🏠 Joining room: $roomId for user: $userId");
       
-      // Leave current room if any
-      if (_currentRoomId != null) {
-        await leaveRoom(_currentRoomId!);
-      }
+      final data = {
+        'room_id': roomId,
+        'user_id': userId,
+      };
 
-      // Create a completer to wait for the room_joined event
+      // Create a completer to wait for the join_room_success event (server response)
       final completer = Completer<Map<String, dynamic>>();
       
-      // Set up a one-time listener for the room_joined event
-      void onRoomJoined(dynamic eventData) {
-        if (eventData is Map<String, dynamic> && eventData['room_id'] == roomId) {
-          _currentRoomId = roomId;
-          _rooms[roomId] = _rooms[roomId] ?? <String>{};
-          _rooms[roomId]!.add(_socket!.id!);
-          _sessionRooms[_socket!.id!] = _sessionRooms[_socket!.id!] ?? <String>{};
-          _sessionRooms[_socket!.id!]!.add(roomId);
-          completer.complete({"success": "Successfully joined room", "data": {'room_id': roomId}});
+      // Set up a one-time listener for the join_room_success event (server response)
+      void onJoinSuccess(dynamic eventData) {
+        if (eventData is Map<String, dynamic>) {
+          completer.complete({
+            "success": "Successfully joined room", 
+            "data": {
+              'room_id': roomId,
+              'current_size': eventData['current_size'],
+              'max_size': eventData['max_size']
+            }
+          });
         }
       }
 
-      // Set up a one-time listener for errors
+      // Set up a one-time listener for join room errors
       void onError(dynamic eventData) {
-        if (eventData is Map<String, dynamic> && eventData['message']?.toString().contains('Failed to join room') == true) {
-          completer.complete({"error": eventData['message']});
+        if (eventData is Map<String, dynamic>) {
+          final message = eventData['message']?.toString() ?? '';
+          if (message.contains('Failed to join room')) {
+            completer.complete({"error": message});
+          }
         }
       }
 
       // Add event listeners
-      _socket!.on('room_joined', onRoomJoined);
+      _socket!.on('join_room_success', onJoinSuccess);
       _socket!.on('join_room_error', onError);
 
-      // Join new room
-      _socket!.emit('join_room', {
-        'room_id': roomId,
-        if (data != null) ...data
-      });
+      // Emit join_room event
+      _socket!.emit('join_room', data);
 
-      // Wait for the room_joined event with a timeout
+      // Wait for the join_room_success event with a timeout
       try {
         final result = await completer.future.timeout(
           const Duration(seconds: 5),
@@ -620,245 +599,163 @@ class WebSocketManager {
         );
         
         // Remove event listeners
-        _socket!.off('room_joined', onRoomJoined);
+        _socket!.off('join_room_success', onJoinSuccess);
         _socket!.off('join_room_error', onError);
         return result;
       } catch (e) {
         // Remove event listeners
-        _socket!.off('room_joined', onRoomJoined);
+        _socket!.off('join_room_success', onJoinSuccess);
         _socket!.off('join_room_error', onError);
         return {"error": "Failed to join room: $e"};
       }
+      
     } catch (e) {
-      _log.error("❌ Join room error: $e");
+      _log.error("❌ Error joining room: $e");
       return {"error": "Failed to join room: $e"};
     }
   }
 
   /// Leave a room
   Future<Map<String, dynamic>> leaveRoom(String roomId) async {
-    if (!_isConnected || _socket == null) {
+    if (_socket == null) {
+      _log.error("❌ Cannot leave room: Socket not initialized");
+      return {"error": "Socket not initialized"};
+    }
+    
+    // Check if socket is actually connected
+    if (!_socket!.connected) {
       _log.error("❌ Cannot leave room: WebSocket not connected");
       return {"error": "WebSocket not connected"};
     }
 
     try {
-      _log.info("🚪 Leaving room: $roomId");
+      _log.info("🏠 Leaving room: $roomId");
       
-      _socket!.emit('leave_room', {
-        'room_id': roomId
-      });
+      final data = {
+        'room_id': roomId,
+      };
 
-      // Update state immediately for leave operations
-      _rooms[roomId]?.remove(_socket!.id);
-      _sessionRooms[_socket!.id]?.remove(roomId);
+      _socket!.emit('leave_room', data);
       
-      if (_currentRoomId == roomId) {
-        _currentRoomId = null;
-      }
-
-      _log.info("✅ Left room: $roomId");
-      return {"success": "Successfully left room", "data": {'room_id': roomId}};
+      return {"success": "Successfully left room"};
       
     } catch (e) {
-      _log.error("❌ Leave room error: $e");
+      _log.error("❌ Error leaving room: $e");
       return {"error": "Failed to leave room: $e"};
     }
   }
 
   /// Send a message to a room
-  Future<Map<String, dynamic>> sendMessage(String message) async {
-    if (!_isConnected || _socket == null) {
+  Future<Map<String, dynamic>> sendMessage(String roomId, String message, [Map<String, dynamic>? additionalData]) async {
+    if (_socket == null) {
+      _log.error("❌ Cannot send message: Socket not initialized");
+      return {"error": "Socket not initialized"};
+    }
+    
+    // Check if socket is actually connected
+    if (!_socket!.connected) {
       _log.error("❌ Cannot send message: WebSocket not connected");
       return {"error": "WebSocket not connected"};
     }
 
-    if (_currentRoomId == null) {
-      _log.error("❌ Cannot send message: Not in a room");
-      return {"error": "Not in a room"};
-    }
-
     try {
-      _log.info("📨 Sending message: $message");
+      _log.info("💬 Sending message to room: $roomId");
       
-      _socket!.emit('message', {
-        'room_id': _currentRoomId,
-        'message': message
-      });
+      final data = {
+        'room_id': roomId,
+        'message': message,
+        ...?additionalData, // Spread additional data if provided
+      };
+
+      _socket!.emit('send_message', data);
       
-      _log.info("✅ Message sent successfully");
       return {"success": "Message sent successfully"};
       
     } catch (e) {
-      _log.error("❌ Send message error: $e");
+      _log.error("❌ Error sending message: $e");
       return {"error": "Failed to send message: $e"};
     }
   }
 
-  /// Press button (game functionality)
-  Future<Map<String, dynamic>> pressButton() async {
-    if (!_isConnected || _socket == null) {
-      _log.error("❌ Cannot press button: WebSocket not connected");
-      return {"error": "WebSocket not connected"};
-    }
-
-    if (_currentRoomId == null) {
-      _log.error("❌ Cannot press button: Not in a room");
-      return {"error": "Not in a room"};
-    }
-
-    try {
-      _log.info("🔘 Pressing button");
-      
-      _socket!.emit('press_button', {
-        'room_id': _currentRoomId
-      });
-      
-      _log.info("✅ Button press sent");
-      return {"success": "Button press sent"};
-      
-    } catch (e) {
-      _log.error("❌ Press button error: $e");
-      return {"error": "Failed to press button: $e"};
-    }
-  }
-
-  /// Get counter (game functionality)
-  Future<Map<String, dynamic>> getCounter() async {
-    if (!_isConnected || _socket == null) {
-      _log.error("❌ Cannot get counter: WebSocket not connected");
-      return {"error": "WebSocket not connected"};
-    }
-
-    if (_currentRoomId == null) {
-      _log.error("❌ Cannot get counter: Not in a room");
-      return {"error": "Not in a room"};
-    }
-
-    try {
-      _log.info("🔢 Getting counter");
-      
-      _socket!.emit('get_counter', {
-        'room_id': _currentRoomId
-      });
-      
-      _log.info("✅ Counter request sent");
-      return {"success": "Counter request sent"};
-      
-    } catch (e) {
-      _log.error("❌ Get counter error: $e");
-      return {"error": "Failed to get counter: $e"};
-    }
-  }
-
-  /// Get users in current room
-  Future<Map<String, dynamic>> getUsers() async {
-    if (!_isConnected || _socket == null) {
-      _log.error("❌ Cannot get users: WebSocket not connected");
-      return {"error": "WebSocket not connected"};
-    }
-
-    if (_currentRoomId == null) {
-      _log.error("❌ Cannot get users: Not in a room");
-      return {"error": "Not in a room"};
-    }
-
-    try {
-      _log.info("👥 Getting users");
-      
-      _socket!.emit('get_users', {
-        'room_id': _currentRoomId
-      });
-      
-      _log.info("✅ Users request sent");
-      return {"success": "Users request sent"};
-      
-    } catch (e) {
-      _log.error("❌ Get users error: $e");
-      return {"error": "Failed to get users: $e"};
-    }
-  }
-
-  /// Emit event to specific room
-  bool emitWithRoom(String event, String roomId, Map<String, dynamic> data) {
+  /// Broadcast a message to all connected clients
+  Future<Map<String, dynamic>> broadcastMessage(String message, [Map<String, dynamic>? additionalData]) async {
     if (_socket == null) {
-      _log.error("❌ Cannot emit event: Socket not connected");
-      return false;
+      _log.error("❌ Cannot broadcast message: Socket not initialized");
+      return {"error": "Socket not initialized"};
+    }
+    
+    // Check if socket is actually connected
+    if (!_socket!.connected) {
+      _log.error("❌ Cannot broadcast message: WebSocket not connected");
+      return {"error": "WebSocket not connected"};
     }
 
     try {
-      _log.info("⚡ Emitting event to room: $event, room: $roomId");
-      final eventData = {
-        'room_id': roomId,
-        ...data
+      _log.info("📢 Broadcasting message to all clients");
+      
+      final data = {
+        'message': message,
+        ...?additionalData, // Spread additional data if provided
       };
-      _socket!.emit(event, eventData);
-      return true;
+
+      _socket!.emit('broadcast', data);
+      
+      return {"success": "Message broadcasted successfully"};
+      
     } catch (e) {
-      _log.error("❌ Error emitting event to room: $e");
-      return false;
+      _log.error("❌ Error broadcasting message: $e");
+      return {"error": "Failed to broadcast message: $e"};
     }
   }
 
-  /// Emit event with acknowledgment
-  bool emitWithAck(String event, Map<String, dynamic> data, Function(dynamic) ack) {
-    if (_socket == null) {
-      _log.error("❌ Cannot emit event with ACK: Socket not connected");
-      return false;
-    }
-
+  /// Get current connection status
+  Map<String, dynamic> getStatus(BuildContext context) {
     try {
-      _log.info("⚡ Emitting event with ACK: $event");
-      _socket!.emitWithAck(event, data, ack: ack);
-      return true;
+      final stateManager = Provider.of<StateManager>(context, listen: false);
+      final websocketState = stateManager.getPluginState<Map<String, dynamic>>("websocket");
+      
+      return {
+        'isInitialized': _isInitialized,
+        'connected': websocketState?['connected'] ?? false,
+        'sessionId': websocketState?['sessionId'],
+        'userId': websocketState?['userId'],
+        'username': websocketState?['username'],
+        'currentRoomId': websocketState?['currentRoomId'],
+        'rooms': websocketState?['rooms'] ?? {},
+        'sessionRooms': websocketState?['sessionRooms'] ?? {},
+        'error': websocketState?['error'],
+        'connectionTime': websocketState?['connectionTime'],
+        'lastActivity': websocketState?['lastActivity'],
+      };
     } catch (e) {
-      _log.error("❌ Error emitting event with ACK: $e");
-      return false;
+      _log.error("❌ Error getting status: $e");
+      return {
+        'isInitialized': _isInitialized,
+        'connected': false,
+        'sessionId': null,
+        'userId': null,
+        'username': null,
+        'currentRoomId': null,
+        'rooms': {},
+        'sessionRooms': {},
+        'error': 'Failed to get status from StateManager',
+      };
     }
   }
 
-  /// Clear all rooms
-  void clearRooms() {
-    _rooms.clear();
-    _sessionRooms.clear();
-    _currentRoomId = null;
-  }
-
-  /// Get connection status
-  Map<String, dynamic> getConnectionStatus() {
-    return {
-      'isConnected': _isConnected,
-      'isInitialized': _isInitialized,
-      'sessionId': _sessionId,
-      'userId': _userId,
-      'username': _username,
-      'currentRoomId': _currentRoomId,
-      'rooms': _rooms,
-      'sessionRooms': _sessionRooms,
-    };
-  }
-
-  /// Reset the manager (for testing or reconnection)
-  void reset() {
-    _socket?.disconnect();
-    _socket = null;
-    _isInitialized = false;
-    _isConnected = false;
-    _sessionId = null;
-    _userId = null;
-    _username = null;
-    _currentRoomId = null;
-    _stopTokenRefreshTimer();
-    clearRooms();
-    _eventHandlers.clear();
-    _log.info("🔄 WebSocket manager reset");
-  }
-
-  /// Dispose resources
+  /// Dispose of the WebSocket manager
   void dispose() {
-    _stopTokenRefreshTimer();
-    _eventStreamController.close();
-    _eventHandlers.clear();
-    clearRooms();
+    try {
+      _socket?.disconnect();
+      _socket = null;
+      _stopTokenRefreshTimer();
+      _eventStreamController.close();
+      _eventHandlers.clear();
+      _isInitialized = false;
+      
+      _log.info("🗑️ WebSocket manager disposed");
+    } catch (e) {
+      _log.error("❌ Error disposing WebSocket manager: $e");
+    }
   }
 } 

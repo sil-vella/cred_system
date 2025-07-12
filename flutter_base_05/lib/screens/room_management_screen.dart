@@ -57,18 +57,18 @@ class _RoomManagementScreenState extends BaseScreenState<RoomManagementScreen> {
       // Get the WebSocket manager from provider
       _websocketManager = Provider.of<WebSocketManager>(context, listen: false);
       
-      // Check if WebSocketManager is already connected
-      if (_websocketManager!.isConnected) {
-        log.info("✅ WebSocket already connected");
-        return;
-      }
-      
-      // Check StateManager for existing connection
+      // Check StateManager for existing connection first (single source of truth)
       final stateManager = Provider.of<StateManager>(context, listen: false);
       final websocketState = stateManager.getPluginState<Map<String, dynamic>>("websocket");
       
-      if (websocketState != null && websocketState['isConnected'] == true) {
+      if (websocketState != null && websocketState['connected'] == true) {
         log.info("✅ Using existing WebSocket connection from StateManager");
+        return;
+      }
+      
+      // Check if WebSocketManager is already connected using StateManager
+      if (_websocketManager!.isConnectedWithContext(context)) {
+        log.info("✅ WebSocket already connected");
         return;
       }
       
@@ -226,7 +226,7 @@ class _RoomManagementScreenState extends BaseScreenState<RoomManagementScreen> {
     try {
       // Join room via WebSocket manager
       log.info("🚪 Joining room: $roomId");
-      final result = await _websocketManager?.joinRoom(roomId);
+      final result = await _websocketManager?.joinRoom(roomId, 'current_user');
       
       if (result?['success'] == true) {
         setState(() {
