@@ -19,6 +19,7 @@ from core.managers.redis_manager import RedisManager
 from core.managers.state_manager import StateManager
 from core.managers.user_actions_manager import UserActionsManager
 from core.managers.action_discovery_manager import ActionDiscoveryManager
+from core.managers.websockets.websocket_manager import WebSocketManager
 
 
 class AppManager:
@@ -94,6 +95,10 @@ class AppManager:
         """Get the state manager instance."""
         return self.state_manager
 
+    def get_websocket_manager(self):
+        """Get the WebSocket manager instance."""
+        return self.websocket_manager
+
     @log_function_call
     def initialize(self, app):
         """
@@ -130,7 +135,14 @@ class AppManager:
         # Initialize ActionDiscoveryManager
         self.action_discovery_manager = ActionDiscoveryManager(self)
         self.action_discovery_manager.discover_all_actions()
-        custom_log("✅ Centralized database, Redis, State, JWT, UserActions, and ActionDiscovery managers initialized")
+        
+        # Initialize WebSocket managers
+        self.websocket_manager = WebSocketManager()
+        self.websocket_manager.set_jwt_manager(self.jwt_manager)
+        self.websocket_manager.set_room_access_check(self.websocket_manager.room_manager.check_room_access)
+        self.websocket_manager.initialize(app, use_builtin_handlers=True)
+        
+        custom_log("✅ Centralized database, Redis, State, JWT, UserActions, ActionDiscovery, and WebSocket managers initialized")
 
         # Initialize services
         self.services_manager.initialize_services()

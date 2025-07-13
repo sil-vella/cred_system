@@ -113,7 +113,7 @@ class AuthManager extends ChangeNotifier {
     try {
       _log.info('🔄 Refreshing access token...');
       
-      final response = await _connectionModule!.sendPostRequest('/auth/refresh', {
+      final response = await _connectionModule!.sendPostRequest('/public/refresh', {
         'refresh_token': refreshToken
       });
       
@@ -124,9 +124,10 @@ class AuthManager extends ChangeNotifier {
       }
       
       // Check if response has access token
-      if (response is Map && response.containsKey('access_token')) {
-        final newAccessToken = response['access_token'];
-        final newRefreshToken = response['refresh_token'] ?? refreshToken;
+      if (response is Map && response.containsKey('data') && response['data'] is Map) {
+        final data = response['data'] as Map<String, dynamic>;
+        final newAccessToken = data['access_token'];
+        final newRefreshToken = data['refresh_token'] ?? refreshToken;
         
         // Store the new tokens
         await storeTokens(

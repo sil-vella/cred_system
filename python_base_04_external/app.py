@@ -29,12 +29,11 @@ metrics = init_metrics(app)
 # Initialize the AppManager and pass the app for plugin registration
 app_manager.initialize(app)
 
-# Initialize WebSocket functionality if websockets module is available
-websocket_module = app_manager.module_manager.get_module('websockets')
-if websocket_module:
-    custom_log("✅ WebSocket module initialized and ready")
+# WebSocket functionality is now handled by app_manager
+if app_manager.websocket_manager:
+    custom_log("✅ WebSocket manager initialized and ready")
 else:
-    custom_log("⚠️ WebSocket module not available")
+    custom_log("⚠️ WebSocket manager not available")
 
 # Additional app-level configurations
 app.config["DEBUG"] = Config.DEBUG
@@ -225,11 +224,10 @@ if __name__ == "__main__":
     host = os.getenv('FLASK_HOST', '0.0.0.0')
     port = int(os.getenv('FLASK_PORT', 5001))
     
-    # Check if WebSocket module is available and use its manager
-    websocket_module = app_manager.module_manager.get_module('websockets')
-    if websocket_module and hasattr(websocket_module, 'websocket_manager'):
+    # WebSocket functionality is now handled by app_manager
+    if app_manager.websocket_manager:
         custom_log("🚀 Starting Flask app with WebSocket support")
-        websocket_module.websocket_manager.run(app, host=host, port=port)
+        app_manager.websocket_manager.run(app, host=host, port=port)
     else:
         custom_log("🚀 Starting Flask app without WebSocket support")
         app_manager.run(app, host=host, port=port)

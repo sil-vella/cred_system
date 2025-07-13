@@ -54,8 +54,10 @@ class UserManagementModule(BaseModule):
         self._register_auth_route_helper("/userauth/users/settings", self.get_user_settings, methods=["GET"])
         self._register_auth_route_helper("/userauth/users/settings", self.update_user_settings, methods=["PUT"])
         self._register_auth_route_helper("/userauth/logout", self.logout_user, methods=["POST"])
-        self._register_auth_route_helper("/userauth/refresh", self.refresh_token, methods=["POST"])
         self._register_auth_route_helper("/userauth/me", self.get_current_user, methods=["GET"])
+        
+        # Public routes (no authentication required)
+        self._register_auth_route_helper("/public/refresh", self.refresh_token, methods=["POST"])
         
 
         
