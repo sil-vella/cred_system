@@ -7,6 +7,7 @@ import '../../core/managers/services_manager.dart';
 import '../../core/services/shared_preferences.dart';
 import '../../tools/logging/logger.dart';
 import '../../core/managers/state_manager.dart';
+import '../../core/managers/auth_manager.dart';
 
 class LoginModule extends ModuleBase {
   static final Logger _log = Logger();
@@ -15,6 +16,7 @@ class LoginModule extends ModuleBase {
   late ModuleManager _localModuleManager;
   SharedPrefManager? _sharedPref;
   ConnectionsApiModule? _connectionModule;
+  AuthManager? _authManager;
   BuildContext? _currentContext;
 
   /// ✅ Constructor with module key and dependencies
@@ -33,11 +35,12 @@ class LoginModule extends ModuleBase {
     _servicesManager = Provider.of<ServicesManager>(context, listen: false);
     _sharedPref = _servicesManager.getService<SharedPrefManager>('shared_pref');
     _connectionModule = _localModuleManager.getModuleByType<ConnectionsApiModule>();
+    _authManager = AuthManager();
     _currentContext = context;
 
     // Initialize login state in StateManager after the current frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final stateManager = Provider.of<StateManager>(context, listen: false);
+      final stateManager = StateManager();
       stateManager.registerModuleState("login", {
         "isLoggedIn": _sharedPref?.getBool('is_logged_in') ?? false,
         "userId": _sharedPref?.getString('user_id'),
@@ -163,7 +166,7 @@ class LoginModule extends ModuleBase {
     _initDependencies(context);
     _log.info("🔑 Starting login process for email: $email");
 
-    if (_connectionModule == null || _sharedPref == null) {
+    if (_connectionModule == null || _sharedPref == null || _authManager == null) {
       _log.error("❌ Missing required modules for login.");
       return {"error": "Service not available."};
     }
@@ -217,10 +220,10 @@ class LoginModule extends ModuleBase {
           return {"error": "Login successful but no access token received"};
         }
         
-        // Store JWT tokens in secure storage for WebSocket authentication
-        await _connectionModule!.updateAuthTokens(
+        // Store JWT tokens using AuthManager
+        await _authManager!.storeTokens(
           accessToken: accessToken,
-          refreshToken: refreshToken
+          refreshToken: refreshToken ?? '',
         );
         
         // Store user data in SharedPreferences
@@ -231,7 +234,7 @@ class LoginModule extends ModuleBase {
         await _sharedPref!.setString('last_login_timestamp', DateTime.now().toIso8601String());
         
         // Update state manager
-        final stateManager = Provider.of<StateManager>(context, listen: false);
+        final stateManager = StateManager();
         stateManager.updateModuleState("login", {
           "isLoggedIn": true,
           "userId": userData['_id'] ?? userData['id'],
@@ -264,9 +267,14 @@ class LoginModule extends ModuleBase {
     _initDependencies(context);
     _log.info("🔓 Starting logout process");
 
+    if (_authManager == null) {
+      _log.error("❌ AuthManager not available for logout");
+      return {"error": "Service not available"};
+    }
+
     try {
-      // Clear JWT tokens from secure storage
-      await _connectionModule!.clearAuthTokens();
+      // Clear JWT tokens using AuthManager
+      await _authManager!.clearTokens();
       
       // Clear stored user data
       await _sharedPref!.setBool('is_logged_in', false);
@@ -275,7 +283,7 @@ class LoginModule extends ModuleBase {
       await _sharedPref!.remove('email');
       
       // Update state manager
-      final stateManager = Provider.of<StateManager>(context, listen: false);
+      final stateManager = StateManager();
       stateManager.updateModuleState("login", {
         "isLoggedIn": false,
         "userId": null,
@@ -294,20 +302,20 @@ class LoginModule extends ModuleBase {
 
   /// ✅ Get current JWT token for WebSocket authentication
   Future<String?> getCurrentToken() async {
-    if (_connectionModule == null) {
-      _log.error("❌ Connection module not available for token retrieval");
+    if (_authManager == null) {
+      _log.error("❌ AuthManager not available for token retrieval");
       return null;
     }
     
     try {
-      final token = await _connectionModule!.getAccessToken();
+      // Use AuthManager to get current valid token
+      final token = await _authManager!.getCurrentValidToken();
       if (token != null) {
         _log.info("✅ Retrieved JWT token for WebSocket authentication");
-        return token;
       } else {
         _log.info("⚠️ No JWT token available for WebSocket authentication");
-        return null;
       }
+      return token;
     } catch (e) {
       _log.error("❌ Error retrieving JWT token: $e");
       return null;
@@ -316,7 +324,23 @@ class LoginModule extends ModuleBase {
 
   /// ✅ Check if user has valid JWT token for WebSocket
   Future<bool> hasValidToken() async {
-    final token = await getCurrentToken();
-    return token != null;
+    if (_authManager == null) {
+      _log.error("❌ AuthManager not available for token validation");
+      return false;
+    }
+    
+    try {
+      // Use AuthManager to check token validity
+      final isValid = await _authManager!.hasValidToken();
+      if (isValid) {
+        _log.info("✅ JWT token is valid for WebSocket authentication");
+      } else {
+        _log.info("⚠️ JWT token is not valid for WebSocket authentication");
+      }
+      return isValid;
+    } catch (e) {
+      _log.error("❌ Error validating token: $e");
+      return false;
+    }
   }
 }

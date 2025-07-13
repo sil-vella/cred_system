@@ -33,20 +33,20 @@ class RoomManager:
         # First check in-memory permissions
         if room_id in self.room_permissions:
             room_data = self.room_permissions[room_id]
-        permission = room_data['permission']
-        
-        # Check permission type
-        if permission == RoomPermission.PUBLIC.value:
-            return True
+            permission = room_data['permission']
             
-        if permission == RoomPermission.PRIVATE.value:
-            return user_id in room_data['allowed_users']
-            
-        if permission == RoomPermission.RESTRICTED.value:
-            return bool(room_data['allowed_roles'] & user_roles)
-            
-        if permission == RoomPermission.OWNER_ONLY.value:
-            return user_id == room_data['owner_id']
+            # Check permission type
+            if permission == RoomPermission.PUBLIC.value:
+                return True
+                
+            if permission == RoomPermission.PRIVATE.value:
+                return user_id in room_data['allowed_users']
+                
+            if permission == RoomPermission.RESTRICTED.value:
+                return bool(room_data['allowed_roles'] & user_roles)
+                
+            if permission == RoomPermission.OWNER_ONLY.value:
+                return user_id == room_data['owner_id']
         
         # If not in memory, check Redis
         from core.managers.redis_manager import RedisManager
@@ -138,15 +138,15 @@ class RoomManager:
             if not room_data:
                 raise ValueError(f"Room {room_id} not found")
         
-        if permission:
-            room_data['permission'] = permission.value
-        if allowed_users is not None:
-            room_data['allowed_users'] = list(allowed_users)
-        if allowed_roles is not None:
-            room_data['allowed_roles'] = list(allowed_roles)
+            if permission:
+                room_data['permission'] = permission.value
+            if allowed_users is not None:
+                room_data['allowed_users'] = list(allowed_users)
+            if allowed_roles is not None:
+                room_data['allowed_roles'] = list(allowed_roles)
             
-        # Update in Redis
-        redis_manager.set(permissions_key, room_data)
+            # Update in Redis
+            redis_manager.set(permissions_key, room_data)
             
         custom_log(f"Updated permissions for room {room_id}")
         return room_data
@@ -181,7 +181,7 @@ class RoomManager:
         size_key = redis_manager._generate_secure_key("room_size", room_id)
         redis_manager.delete(size_key)
         
-        custom_log(f"Deleted room {room_id}")
+        custom_log(f"Deleted room {room_id}") 
 
     def list_rooms(self, owner_id: str = None) -> list:
         """List all rooms, optionally filtered by owner."""

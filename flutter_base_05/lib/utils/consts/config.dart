@@ -21,7 +21,7 @@ class Config {
   // WebSocket URL for external app
   static const String wsUrl = String.fromEnvironment(
     'WS_URL_LOCAL',
-    defaultValue: 'http://10.0.2.2:8081',
+    defaultValue: 'ws://10.0.2.2:8081',
   );
 
   // Stripe Publishable Key

@@ -9,6 +9,7 @@ import 'package:http_interceptor/http_interceptor.dart';
 
 import '../../core/00_base/module_base.dart';
 import '../../core/managers/module_manager.dart';
+import '../../core/managers/auth_manager.dart';
 import '../../tools/logging/logger.dart';
 import 'interceptor.dart';
 
@@ -16,6 +17,7 @@ class ConnectionsApiModule extends ModuleBase {
   static final Logger _log = Logger();
   final String baseUrl;
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  AuthManager? _authManager;
 
   /// ✅ Use InterceptedClient instead of normal `http`
   final InterceptedClient client = InterceptedClient.build(
@@ -29,6 +31,7 @@ class ConnectionsApiModule extends ModuleBase {
   @override
   void initialize(BuildContext context, ModuleManager moduleManager) {
     super.initialize(context, moduleManager);
+    _authManager = AuthManager();
     _log.info('✅ ConnectionsApiModule initialized with context.');
     _sendTestRequest();
   }
@@ -55,70 +58,16 @@ class ConnectionsApiModule extends ModuleBase {
     }
   }
 
-  /// ✅ Update authentication tokens
-  Future<void> updateAuthTokens({
-    required String accessToken,
-    required String refreshToken,
-  }) async {
-    try {
-      await _secureStorage.write(key: 'access_token', value: accessToken);
-      await _secureStorage.write(key: 'refresh_token', value: refreshToken);
-      _log.info('✅ Auth tokens updated successfully');
-    } catch (e) {
-      _log.error('❌ Failed to update auth tokens: $e');
-      rethrow;
-    }
-  }
-
-  /// ✅ Clear authentication tokens
-  Future<void> clearAuthTokens() async {
-    try {
-      await _secureStorage.delete(key: 'access_token');
-      await _secureStorage.delete(key: 'refresh_token');
-      _log.info('✅ Auth tokens cleared successfully');
-    } catch (e) {
-      _log.error('❌ Failed to clear auth tokens: $e');
-      rethrow;
-    }
-  }
-
-  /// ✅ Get current access token
-  Future<String?> getAccessToken() async {
-    return await _secureStorage.read(key: 'access_token');
-  }
-
-  /// ✅ Get current refresh token
-  Future<String?> getRefreshToken() async {
-    return await _secureStorage.read(key: 'refresh_token');
-  }
-
-  /// ✅ Refresh access token using refresh token
+  /// ✅ Refresh access token using refresh token (delegates to AuthManager)
   Future<String?> refreshAccessToken(String refreshToken) async {
-    try {
-      _log.info('🔄 Refreshing access token...');
-      
-      final response = await sendPostRequest('/auth/refresh', {
-        'refresh_token': refreshToken
-      });
-      
-      // Check if response is an error
-      if (response is Map && response.containsKey('error')) {
-        _log.error('❌ Token refresh error: ${response['error']}');
-        return null;
-      }
-      
-      // Check if response has access token
-      if (response is Map && response.containsKey('access_token')) {
-        await updateAuthTokens(
-          accessToken: response['access_token'],
-          refreshToken: response['refresh_token'] ?? refreshToken
-        );
-        _log.info('✅ Token refreshed successfully');
-        return response['access_token'];
-      }
-      
-      _log.error('❌ Failed to refresh token: Invalid response format');
+    if (_authManager == null) {
+      _log.error('❌ AuthManager not available for token refresh');
       return null;
+    }
+
+    try {
+      _log.info('🔄 Refreshing access token via AuthManager...');
+      return await _authManager!.refreshAccessToken(refreshToken);
     } catch (e) {
       _log.error('❌ Failed to refresh token: $e');
       return null;
@@ -200,7 +149,8 @@ class ConnectionsApiModule extends ModuleBase {
       return jsonDecode(response.body);
     } else if (response.statusCode == 401) {
       _log.error('⚠️ Unauthorized: Clearing token...');
-      const FlutterSecureStorage().delete(key: 'auth_token');
+      // Use AuthManager to clear tokens
+      _authManager?.clearTokens();
       return {"message": "Session expired. Please log in again.", "error": "Unauthorized"};
     } else {
       _log.error('⚠️ Server Error: ${response.statusCode}');

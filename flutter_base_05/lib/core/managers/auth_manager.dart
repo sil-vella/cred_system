@@ -44,6 +44,152 @@ class AuthManager extends ChangeNotifier {
     _log.info('✅ AuthManager initialized');
   }
 
+  /// ✅ Store JWT tokens in secure storage
+  Future<void> storeTokens({
+    required String accessToken,
+    required String refreshToken,
+  }) async {
+    try {
+      await _secureStorage.write(key: 'access_token', value: accessToken);
+      await _secureStorage.write(key: 'refresh_token', value: refreshToken);
+      _log.info('✅ JWT tokens stored successfully in secure storage');
+    } catch (e) {
+      _log.error('❌ Failed to store JWT tokens: $e');
+      rethrow;
+    }
+  }
+
+  /// ✅ Get access token from secure storage
+  Future<String?> getAccessToken() async {
+    try {
+      final token = await _secureStorage.read(key: 'access_token');
+      if (token != null) {
+        _log.debug('✅ Retrieved access token from secure storage');
+      } else {
+        _log.debug('⚠️ No access token found in secure storage');
+      }
+      return token;
+    } catch (e) {
+      _log.error('❌ Error retrieving access token: $e');
+      return null;
+    }
+  }
+
+  /// ✅ Get refresh token from secure storage
+  Future<String?> getRefreshToken() async {
+    try {
+      final token = await _secureStorage.read(key: 'refresh_token');
+      if (token != null) {
+        _log.debug('✅ Retrieved refresh token from secure storage');
+      } else {
+        _log.debug('⚠️ No refresh token found in secure storage');
+      }
+      return token;
+    } catch (e) {
+      _log.error('❌ Error retrieving refresh token: $e');
+      return null;
+    }
+  }
+
+  /// ✅ Clear all JWT tokens from secure storage
+  Future<void> clearTokens() async {
+    try {
+      await _secureStorage.delete(key: 'access_token');
+      await _secureStorage.delete(key: 'refresh_token');
+      _log.info('✅ JWT tokens cleared from secure storage');
+    } catch (e) {
+      _log.error('❌ Error clearing JWT tokens: $e');
+      rethrow;
+    }
+  }
+
+  /// ✅ Refresh access token using refresh token
+  Future<String?> refreshAccessToken(String refreshToken) async {
+    if (_connectionModule == null) {
+      _log.error('❌ Connection module not available for token refresh');
+      return null;
+    }
+
+    try {
+      _log.info('🔄 Refreshing access token...');
+      
+      final response = await _connectionModule!.sendPostRequest('/auth/refresh', {
+        'refresh_token': refreshToken
+      });
+      
+      // Check if response is an error
+      if (response is Map && response.containsKey('error')) {
+        _log.error('❌ Token refresh error: ${response['error']}');
+        return null;
+      }
+      
+      // Check if response has access token
+      if (response is Map && response.containsKey('access_token')) {
+        final newAccessToken = response['access_token'];
+        final newRefreshToken = response['refresh_token'] ?? refreshToken;
+        
+        // Store the new tokens
+        await storeTokens(
+          accessToken: newAccessToken,
+          refreshToken: newRefreshToken,
+        );
+        
+        _log.info('✅ Token refreshed successfully');
+        return newAccessToken;
+      }
+      
+      _log.error('❌ Failed to refresh token: Invalid response format');
+      return null;
+    } catch (e) {
+      _log.error('❌ Failed to refresh token: $e');
+      return null;
+    }
+  }
+
+  /// ✅ Get current valid JWT token (with refresh if needed)
+  Future<String?> getCurrentValidToken() async {
+    try {
+      // First, try to get the current access token
+      final accessToken = await getAccessToken();
+      if (accessToken == null) {
+        _log.info('⚠️ No access token available');
+        return null;
+      }
+      
+      // Try to refresh the token to ensure we have a fresh one
+      final refreshToken = await getRefreshToken();
+      if (refreshToken != null) {
+        _log.info('🔄 Attempting to refresh token to ensure validity...');
+        final newToken = await refreshAccessToken(refreshToken);
+        if (newToken != null) {
+          _log.info('✅ Retrieved fresh JWT token');
+          return newToken;
+        } else {
+          _log.info('⚠️ Token refresh failed, using existing token');
+          return accessToken;
+        }
+      }
+      
+      // If no refresh token, use the current access token
+      _log.info('✅ Retrieved JWT token (no refresh token available)');
+      return accessToken;
+    } catch (e) {
+      _log.error('❌ Error retrieving valid JWT token: $e');
+      return null;
+    }
+  }
+
+  /// ✅ Check if user has valid JWT token
+  Future<bool> hasValidToken() async {
+    try {
+      final token = await getCurrentValidToken();
+      return token != null;
+    } catch (e) {
+      _log.error('❌ Error checking token validity: $e');
+      return false;
+    }
+  }
+
   /// ✅ Validate session on app startup
   Future<AuthStatus> validateSessionOnStartup() async {
     if (_sharedPref == null) {
@@ -67,10 +213,10 @@ class AuthManager extends ChangeNotifier {
         return AuthStatus.loggedOut;
       }
 
-      // Step 2: Check if JWT token exists
-      final accessToken = await _secureStorage.read(key: 'access_token');
-      if (accessToken == null) {
-        _log.info('⚠️ No access token found, clearing stored data');
+      // Step 2: Check if JWT token exists and is valid
+      final hasValidJWT = await hasValidToken();
+      if (!hasValidJWT) {
+        _log.info('⚠️ No valid JWT token found, clearing stored data');
         await _clearStoredData();
         _currentStatus = AuthStatus.tokenExpired;
         _isValidating = false;
@@ -78,33 +224,7 @@ class AuthManager extends ChangeNotifier {
         return AuthStatus.tokenExpired;
       }
 
-      // Step 3: Validate token with backend (optional but recommended)
-      final isValid = await _validateTokenWithBackend(accessToken);
-      if (!isValid) {
-        _log.info('⚠️ Token validation failed, attempting refresh');
-        
-        // Try to refresh token
-        final refreshToken = await _secureStorage.read(key: 'refresh_token');
-        if (refreshToken != null && _connectionModule != null) {
-          final newToken = await _connectionModule!.refreshAccessToken(refreshToken);
-          if (newToken != null) {
-            _log.info('✅ Token refreshed successfully');
-            _currentStatus = AuthStatus.loggedIn;
-            _isValidating = false;
-            notifyListeners();
-            return AuthStatus.loggedIn;
-          }
-        }
-        
-        _log.info('⚠️ Token refresh failed, clearing stored data');
-        await _clearStoredData();
-        _currentStatus = AuthStatus.tokenExpired;
-        _isValidating = false;
-        notifyListeners();
-        return AuthStatus.tokenExpired;
-      }
-
-      // Step 4: Check session age (optional)
+      // Step 3: Check session age (optional)
       final lastLogin = _sharedPref!.getString('last_login_timestamp');
       if (lastLogin != null) {
         final lastLoginTime = DateTime.parse(lastLogin);
@@ -135,27 +255,9 @@ class AuthManager extends ChangeNotifier {
     }
   }
 
-  /// ✅ Validate token with backend
-  Future<bool> _validateTokenWithBackend(String token) async {
-    if (_connectionModule == null) {
-      _log.info('⚠️ Connection module not available, skipping backend validation');
-      return true; // Assume valid if we can't validate
-    }
-
-    try {
-      // You can implement a lightweight token validation endpoint
-      // For now, we'll assume the token is valid if it exists
-      // In production, you might want to call /auth/validate or similar
-      return true;
-    } catch (e) {
-      _log.error('❌ Token validation error: $e');
-      return false;
-    }
-  }
-
   /// ✅ Handle authentication state changes
   Future<void> handleAuthState(BuildContext context, AuthStatus status) async {
-    final stateManager = Provider.of<StateManager>(context, listen: false);
+    final stateManager = StateManager();
     
     switch (status) {
       case AuthStatus.loggedIn:
@@ -209,9 +311,8 @@ class AuthManager extends ChangeNotifier {
   /// ✅ Clear all stored authentication data
   Future<void> _clearStoredData() async {
     try {
-      // Clear secure storage
-      await _secureStorage.delete(key: 'access_token');
-      await _secureStorage.delete(key: 'refresh_token');
+      // Clear JWT tokens from secure storage
+      await clearTokens();
       
       // Clear shared preferences
       if (_sharedPref != null) {
@@ -243,11 +344,6 @@ class AuthManager extends ChangeNotifier {
   /// ✅ Check if user is currently logged in
   bool get isLoggedIn {
     return _sharedPref?.getBool('is_logged_in') ?? false;
-  }
-
-  /// ✅ Get current JWT token
-  Future<String?> getCurrentToken() async {
-    return await _secureStorage.read(key: 'access_token');
   }
 
   @override
