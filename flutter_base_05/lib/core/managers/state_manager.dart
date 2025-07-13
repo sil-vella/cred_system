@@ -2,21 +2,21 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../tools/logging/logger.dart';
 
-class PluginState {
+class ModuleState {
   final Map<String, dynamic> state;
 
-  PluginState({required this.state});
+  ModuleState({required this.state});
 
   /// Ensures all keys are Strings and values are valid JSON types
-  factory PluginState.fromDynamic(Map<dynamic, dynamic> rawState) {
-    return PluginState(
+  factory ModuleState.fromDynamic(Map<dynamic, dynamic> rawState) {
+    return ModuleState(
       state: rawState.map((key, value) => MapEntry(key.toString(), value)),
     );
   }
 
   /// Merges the new state with the existing one
-  PluginState merge(Map<String, dynamic> newState) {
-    return PluginState(state: {...state, ...newState});
+  ModuleState merge(Map<String, dynamic> newState) {
+    return ModuleState(state: {...state, ...newState});
   }
 }
 
@@ -24,7 +24,7 @@ class StateManager with ChangeNotifier {
   static final Logger _log = Logger(); // ✅ Use a static logger for static methods
   static StateManager? _instance;
 
-  final Map<String, PluginState> _pluginStates = {}; // Stores structured plugin states
+  final Map<String, ModuleState> _moduleStates = {}; // Stores structured module states
   Map<String, dynamic> _mainAppState = {'main_state': 'idle'}; // Default main app state
 
 
@@ -38,42 +38,42 @@ class StateManager with ChangeNotifier {
     return _instance!;
   }
 
-  // ------ Plugin State Methods ------
+  // ------ Module State Methods ------
 
-  bool isPluginStateRegistered(String pluginKey) {
-    return _pluginStates.containsKey(pluginKey);
+  bool isModuleStateRegistered(String moduleKey) {
+    return _moduleStates.containsKey(moduleKey);
   }
 
-  /// ✅ Strictly register plugin states with `PluginState` structure
-  void registerPluginState(String pluginKey, Map<String, dynamic> initialState) {
-    if (!_pluginStates.containsKey(pluginKey)) {
-      _pluginStates[pluginKey] = PluginState(state: initialState);
-      _log.info("✅ Registered plugin state for key: $pluginKey");
+  /// ✅ Strictly register module states with `ModuleState` structure
+  void registerModuleState(String moduleKey, Map<String, dynamic> initialState) {
+    if (!_moduleStates.containsKey(moduleKey)) {
+      _moduleStates[moduleKey] = ModuleState(state: initialState);
+      _log.info("✅ Registered module state for key: $moduleKey");
       _log.info("📊 Current app state after registration:");
       _logAppState();
       // Use Future.microtask to avoid calling notifyListeners during build
       Future.microtask(() => notifyListeners());
     } else {
-      _log.error("⚠️ Plugin state for '$pluginKey' is already registered.");
+      _log.error("⚠️ Module state for '$moduleKey' is already registered.");
     }
   }
 
-  /// ✅ Unregister plugin state
-  void unregisterPluginState(String pluginKey) {
-    if (_pluginStates.containsKey(pluginKey)) {
-      _pluginStates.remove(pluginKey);
-      _log.info("🗑 Unregistered state for key: $pluginKey");
+  /// ✅ Unregister module state
+  void unregisterModuleState(String moduleKey) {
+    if (_moduleStates.containsKey(moduleKey)) {
+      _moduleStates.remove(moduleKey);
+      _log.info("🗑 Unregistered state for key: $moduleKey");
       _log.info("📊 Current app state after unregistration:");
       _logAppState();
       // Use Future.microtask to avoid calling notifyListeners during build
       Future.microtask(() => notifyListeners());
     } else {
-      _log.error("⚠️ Plugin state for '$pluginKey' does not exist.");
+      _log.error("⚠️ Module state for '$moduleKey' does not exist.");
     }
   }
 
-  T? getPluginState<T>(String pluginKey) {
-    final PluginState? storedState = _pluginStates[pluginKey];
+  T? getModuleState<T>(String moduleKey) {
+    final ModuleState? storedState = _moduleStates[moduleKey];
 
     if (storedState == null) {
       return null; // Ensure we don't attempt to access a null object
@@ -88,7 +88,7 @@ class StateManager with ChangeNotifier {
       return storedState.state as T;
     }
 
-    _log.error("❌ Type mismatch: Requested '$T' but found '${storedState.state.runtimeType}' for plugin '$pluginKey'");
+    _log.error("❌ Type mismatch: Requested '$T' but found '${storedState.state.runtimeType}' for module '$moduleKey'");
     return null;
   }
 
@@ -96,60 +96,60 @@ class StateManager with ChangeNotifier {
   void _logAppState() {
     final allStates = getAllStates();
     _log.info("📊 Complete App State:");
-    _log.info("🔧 Plugin States: ${allStates['plugin_states']}");
+    _log.info("🔧 Module States: ${allStates['module_states']}");
     _log.info("📱 Main App State: ${allStates['main_app_state']}");
-    _log.info("📈 Total Plugin States: ${getPluginStateCount()}");
-    _log.info("🔑 Registered Keys: ${getRegisteredPluginKeys()}");
+    _log.info("📈 Total Module States: ${getModuleStateCount()}");
+    _log.info("🔑 Registered Keys: ${getRegisteredModuleKeys()}");
   }
 
-  void updatePluginState(String pluginKey, Map<String, dynamic> newState, {bool force = false}) {
-    if (!_pluginStates.containsKey(pluginKey)) {
-      _log.error("❌ Cannot update state for '$pluginKey' - it is not registered.");
+  void updateModuleState(String moduleKey, Map<String, dynamic> newState, {bool force = false}) {
+    if (!_moduleStates.containsKey(moduleKey)) {
+      _log.error("❌ Cannot update state for '$moduleKey' - it is not registered.");
       return;
     }
 
-    final existingState = _pluginStates[pluginKey];
+    final existingState = _moduleStates[moduleKey];
 
     if (existingState != null) {
       // ✅ Ensure `merge` exists (assuming it's a custom method)
       final newMergedState = existingState.merge(newState);
-      _pluginStates[pluginKey] = newMergedState;
-      _log.info("✅ Updated state for plugin '$pluginKey'");
+      _moduleStates[moduleKey] = newMergedState;
+      _log.info("✅ Updated state for module '$moduleKey'");
       _log.info("📊 Current app state after update:");
       _logAppState();
       // Use Future.microtask to avoid calling notifyListeners during build
       Future.microtask(() => notifyListeners());
     } else {
-      _log.error("❌ Cannot update state for '$pluginKey' - existing state is null");
+      _log.error("❌ Cannot update state for '$moduleKey' - existing state is null");
     }
   }
 
-  /// Returns a map of all registered plugin states
-  Map<String, Map<String, dynamic>> getAllPluginStates() {
-    return _pluginStates.map((key, value) => MapEntry(key, value.state));
+  /// Returns a map of all registered module states
+  Map<String, Map<String, dynamic>> getAllModuleStates() {
+    return _moduleStates.map((key, value) => MapEntry(key, value.state));
   }
 
   /// Returns a map of all registered states including main app state
   Map<String, dynamic> getAllStates() {
     return {
-      'plugin_states': getAllPluginStates(),
+      'module_states': getAllModuleStates(),
       'main_app_state': _mainAppState,
     };
   }
 
-  /// Returns a list of all registered plugin keys
-  List<String> getRegisteredPluginKeys() {
-    return _pluginStates.keys.toList();
+  /// Returns a list of all registered module keys
+  List<String> getRegisteredModuleKeys() {
+    return _moduleStates.keys.toList();
   }
 
-  /// Returns the number of registered plugin states
-  int getPluginStateCount() {
-    return _pluginStates.length;
+  /// Returns the number of registered module states
+  int getModuleStateCount() {
+    return _moduleStates.length;
   }
 
-  /// Returns true if any plugin state is registered
-  bool hasPluginStates() {
-    return _pluginStates.isNotEmpty;
+  /// Returns true if any module state is registered
+  bool hasModuleStates() {
+    return _moduleStates.isNotEmpty;
   }
 
   // ------ Main App State Methods ------

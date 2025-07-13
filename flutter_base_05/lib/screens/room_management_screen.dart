@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'dart:async';
 import '../core/00_base/screen_base.dart';
 import '../core/managers/websocket_manager.dart';
+import '../core/managers/ws_event_manager.dart';
+import '../core/managers/state_manager.dart';
 import '../core/models/websocket_events.dart';
 
 class RoomManagementScreen extends BaseScreen {
@@ -24,16 +26,16 @@ class _RoomManagementScreenState extends BaseScreenState<RoomManagementScreen> {
   final TextEditingController _allowedUsersController = TextEditingController();
   final TextEditingController _allowedRolesController = TextEditingController();
   
-  // State variables
+  // State variables - only transient UI state
   String _selectedPermission = 'public';
   List<Map<String, dynamic>> _publicRooms = [];
   List<Map<String, dynamic>> _myRooms = [];
   bool _isLoading = false;
-  String _currentRoomId = '';
-  Map<String, dynamic>? _currentRoomInfo;
   
-  // WebSocket manager singleton
+  // Managers
   final WebSocketManager _websocketManager = WebSocketManager.instance;
+  final WSEventManager _wsEventManager = WSEventManager.instance;
+  final StateManager _stateManager = StateManager();
   
   // Permission options
   final List<String> _permissionOptions = [
@@ -48,6 +50,8 @@ class _RoomManagementScreenState extends BaseScreenState<RoomManagementScreen> {
     super.initState();
     _initializeWebSocket().then((_) {
       _loadPublicRooms();
+      _setupEventCallbacks();
+      _initializeRoomState();
     });
   }
 
@@ -89,6 +93,11 @@ class _RoomManagementScreenState extends BaseScreenState<RoomManagementScreen> {
     _roomIdController.dispose();
     _allowedUsersController.dispose();
     _allowedRolesController.dispose();
+    
+    // Clean up event callbacks
+    _wsEventManager.offEvent('room', (data) {});
+    _wsEventManager.offEvent('error', (data) {});
+    
     super.dispose();
   }
 
@@ -178,7 +187,7 @@ class _RoomManagementScreenState extends BaseScreenState<RoomManagementScreen> {
         return;
       }
       
-      final result = await _websocketManager.createRoom('current_user', roomData);
+      final result = await _wsEventManager.createRoom('current_user', roomData);
       
       log.info("🏠 Create room result: $result");
       
@@ -203,6 +212,9 @@ class _RoomManagementScreenState extends BaseScreenState<RoomManagementScreen> {
 
         _showSnackBar('Room created successfully!');
         _clearForm();
+        
+        // Note: The room_joined event will be handled by the event callback
+        // which will update StateManager automatically
       } else {
         throw Exception(result?['error'] ?? 'Failed to create room');
       }
@@ -232,28 +244,19 @@ class _RoomManagementScreenState extends BaseScreenState<RoomManagementScreen> {
         return;
       }
       
-      // Join room via WebSocket manager
+      // Join room via WebSocket event manager
       log.info("🚪 Joining room: $roomId");
-      final result = await _websocketManager.joinRoom(roomId, 'current_user');
+      final result = await _wsEventManager.joinRoom(roomId, 'current_user');
       
       if (result?['success'] == true) {
         setState(() {
-          _currentRoomId = roomId;
-          _currentRoomInfo = {
-            'room_id': roomId,
-            'owner_id': 'user123',
-            'permission': 'public',
-            'current_size': 3,
-            'max_size': 10,
-            'created_at': '2024-01-15T10:30:00Z',
-            'members': ['user123', 'user456', 'current_user'],
-            'allowed_users': [],
-            'allowed_roles': []
-          };
           _isLoading = false;
         });
 
         _showSnackBar('Joined room: $roomId');
+        
+        // Note: The room_joined event will be handled by the event callback
+        // which will update StateManager automatically
       } else {
         throw Exception(result?['error'] ?? 'Failed to join room');
       }
@@ -269,18 +272,15 @@ class _RoomManagementScreenState extends BaseScreenState<RoomManagementScreen> {
 
   Future<void> _leaveRoom(String roomId) async {
     try {
-      // Leave room via WebSocket manager
+      // Leave room via WebSocket event manager
       log.info("🚪 Leaving room: $roomId");
-      final result = await _websocketManager.leaveRoom(roomId);
+      final result = await _wsEventManager.leaveRoom(roomId);
       
       if (result?['success'] == true) {
-        setState(() {
-          if (_currentRoomId == roomId) {
-            _currentRoomId = '';
-            _currentRoomInfo = null;
-          }
-        });
         _showSnackBar('Left room: $roomId');
+        
+        // Note: The room_joined event will be handled by the event callback
+        // which will update StateManager automatically
       } else {
         throw Exception(result?['error'] ?? 'Failed to leave room');
       }
@@ -297,6 +297,54 @@ class _RoomManagementScreenState extends BaseScreenState<RoomManagementScreen> {
     _allowedUsersController.clear();
     _allowedRolesController.clear();
     _selectedPermission = 'public';
+  }
+
+  void _initializeRoomState() {
+    // State is now managed by StateManager, no need to initialize local variables
+    log.info("🏠 Room state is managed by StateManager");
+  }
+
+  void _setupEventCallbacks() {
+    // Listen for room events - no setState needed as StateManager handles state
+    _wsEventManager.onEvent('room', (data) {
+      final action = data['action'];
+      final roomId = data['roomId'];
+      
+      log.info("📨 Received room event: action=$action, roomId=$roomId");
+      
+      if (action == 'joined') {
+        _showSnackBar('Successfully joined room: $roomId');
+      } else if (action == 'left') {
+        _showSnackBar('Left room: $roomId');
+      } else if (action == 'created') {
+        _showSnackBar('Room created: $roomId');
+        // Note: After room creation, the user is automatically joined
+        // The 'joined' event will handle updating the UI state
+      }
+    });
+
+    // Listen for specific room events for better debugging
+    _wsEventManager.onEvent('room_joined', (data) {
+      log.info("📨 Received room_joined event: $data");
+    });
+
+    _wsEventManager.onEvent('join_room_success', (data) {
+      log.info("📨 Received join_room_success event: $data");
+    });
+
+    _wsEventManager.onEvent('create_room_success', (data) {
+      log.info("📨 Received create_room_success event: $data");
+    });
+
+    _wsEventManager.onEvent('room_created', (data) {
+      log.info("📨 Received room_created event: $data");
+    });
+
+    // Listen for error events
+    _wsEventManager.onEvent('error', (data) {
+      final error = data['error'];
+      _showSnackBar('Error: $error', isError: true);
+    });
   }
 
   void _showSnackBar(String message, {bool isError = false}) {
@@ -317,29 +365,13 @@ class _RoomManagementScreenState extends BaseScreenState<RoomManagementScreen> {
         final isConnected = connectionSnapshot.data?.status == ConnectionStatus.connected || _websocketManager.isConnected;
         final isConnecting = _websocketManager.isConnecting;
         
-        return StreamBuilder<WebSocketEvent>(
-          stream: _websocketManager.events,
-          builder: (context, eventSnapshot) {
-            // Handle incoming events
-            if (eventSnapshot.hasData) {
-              final event = eventSnapshot.data!;
-              if (event is RoomEvent) {
-                // Handle room events
-                if (event.action == 'joined') {
-                  setState(() {
-                    _currentRoomId = event.roomId;
-                    _currentRoomInfo = event.roomData;
-                  });
-                } else if (event.action == 'left') {
-                  setState(() {
-                    if (_currentRoomId == event.roomId) {
-                      _currentRoomId = '';
-                      _currentRoomInfo = null;
-                    }
-                  });
-                }
-              }
-            }
+        return AnimatedBuilder(
+          animation: _stateManager,
+          builder: (context, child) {
+            // Get state from StateManager
+            final websocketState = _stateManager.getModuleState<Map<String, dynamic>>("websocket");
+            final currentRoomId = websocketState?['currentRoomId'] as String?;
+            final currentRoomInfo = websocketState?['currentRoomInfo'] as Map<String, dynamic>?;
             
             return SingleChildScrollView(
               padding: const EdgeInsets.all(16),
@@ -507,7 +539,7 @@ class _RoomManagementScreenState extends BaseScreenState<RoomManagementScreen> {
                   const SizedBox(height: 24),
 
                   // Current Room Info
-                  if (_currentRoomInfo != null)
+                  if (currentRoomInfo != null)
                     Card(
                       child: Padding(
                         padding: const EdgeInsets.all(16),
@@ -525,7 +557,7 @@ class _RoomManagementScreenState extends BaseScreenState<RoomManagementScreen> {
                                 ),
                                 const Spacer(),
                                 ElevatedButton(
-                                  onPressed: isConnected ? () => _leaveRoom(_currentRoomId) : null,
+                                  onPressed: isConnected && currentRoomId != null ? () => _leaveRoom(currentRoomId!) : null,
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.red,
                                     foregroundColor: Colors.white,
@@ -535,10 +567,10 @@ class _RoomManagementScreenState extends BaseScreenState<RoomManagementScreen> {
                               ],
                             ),
                             const SizedBox(height: 8),
-                            Text('Room ID: ${_currentRoomInfo!['room_id']}'),
-                            Text('Owner: ${_currentRoomInfo!['owner_id']}'),
-                            Text('Members: ${_currentRoomInfo!['current_size']}/${_currentRoomInfo!['max_size']}'),
-                            Text('Permission: ${_currentRoomInfo!['permission']}'),
+                            Text('Room ID: ${currentRoomInfo!['room_id']}'),
+                            Text('Owner: ${currentRoomInfo!['owner_id']}'),
+                            Text('Members: ${currentRoomInfo!['current_size']}/${currentRoomInfo!['max_size']}'),
+                            Text('Permission: ${currentRoomInfo!['permission']}'),
                           ],
                         ),
                       ),

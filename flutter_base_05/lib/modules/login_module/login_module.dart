@@ -38,7 +38,7 @@ class LoginModule extends ModuleBase {
     // Initialize login state in StateManager after the current frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final stateManager = Provider.of<StateManager>(context, listen: false);
-      stateManager.registerPluginState("login", {
+      stateManager.registerModuleState("login", {
         "isLoggedIn": _sharedPref?.getBool('is_logged_in') ?? false,
         "userId": _sharedPref?.getString('user_id'),
         "username": _sharedPref?.getString('username'),
@@ -228,10 +228,11 @@ class LoginModule extends ModuleBase {
         await _sharedPref!.setString('user_id', userData['_id'] ?? userData['id'] ?? '');
         await _sharedPref!.setString('username', userData['username'] ?? '');
         await _sharedPref!.setString('email', email);
+        await _sharedPref!.setString('last_login_timestamp', DateTime.now().toIso8601String());
         
         // Update state manager
         final stateManager = Provider.of<StateManager>(context, listen: false);
-        stateManager.updatePluginState("login", {
+        stateManager.updateModuleState("login", {
           "isLoggedIn": true,
           "userId": userData['_id'] ?? userData['id'],
           "username": userData['username'],
@@ -275,7 +276,7 @@ class LoginModule extends ModuleBase {
       
       // Update state manager
       final stateManager = Provider.of<StateManager>(context, listen: false);
-      stateManager.updatePluginState("login", {
+      stateManager.updateModuleState("login", {
         "isLoggedIn": false,
         "userId": null,
         "username": null,

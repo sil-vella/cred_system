@@ -23,11 +23,8 @@ class _WebSocketScreenState extends BaseScreenState<WebSocketScreen> {
   String? sessionId;
   
   // Controllers for input fields
-  final TextEditingController _roomIdController = TextEditingController();
   final TextEditingController _messageController = TextEditingController();
   final TextEditingController _customMessageController = TextEditingController();
-  
-  String currentRoomId = '';
 
   // Module manager for accessing LoginModule
   final ModuleManager _moduleManager = ModuleManager();
@@ -80,25 +77,6 @@ class _WebSocketScreenState extends BaseScreenState<WebSocketScreen> {
     });
   }
 
-  void _joinRoom() async {
-    final roomId = _roomIdController.text.trim();
-    if (roomId.isEmpty) {
-      messages.add('⚠️ Please enter a room ID');
-      return;
-    }
-    
-    log.info('🏠 Attempting to join room: $roomId');
-    final result = await _websocketManager.joinRoom(roomId, 'current_user');
-    if (result['success'] != null) {
-      messages.add('🏠 Successfully joined room: $roomId');
-      setState(() {
-        currentRoomId = roomId;
-      });
-    } else {
-      messages.add('🚨 Failed to join room: ${result['error']}');
-    }
-  }
-
   void _sendMessage() async {
     final message = _customMessageController.text.trim();
     if (message.isEmpty) {
@@ -107,7 +85,7 @@ class _WebSocketScreenState extends BaseScreenState<WebSocketScreen> {
     }
     
     log.info('💬 Sending WebSocket message: $message');
-    final result = await _websocketManager.sendMessage(currentRoomId, message);
+    final result = await _websocketManager.broadcastMessage(message);
     if (result['success'] != null) {
       messages.add('💬 Sent message: $message');
       _customMessageController.clear(); // Clear the input
@@ -145,7 +123,6 @@ class _WebSocketScreenState extends BaseScreenState<WebSocketScreen> {
     log.info('🔍 WebSocket state before dispose: connected=${_websocketManager.isConnected}');
     
     // Don't disconnect the WebSocket manager - keep it alive for other screens
-    _roomIdController.dispose();
     _messageController.dispose();
     _customMessageController.dispose();
     super.dispose();
@@ -257,65 +234,6 @@ class _WebSocketScreenState extends BaseScreenState<WebSocketScreen> {
                               isConnected ? 'Disconnect' : 'Connect',
                               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                             ),
-                          ),
-                        ),
-                        
-                        const SizedBox(height: 16),
-                        
-                        // Room Management
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.shade50,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.orange.shade200),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Room Management',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: TextField(
-                                      controller: _roomIdController,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Room ID',
-                                        hintText: 'Enter room ID to join',
-                                        border: OutlineInputBorder(),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  ElevatedButton(
-                                    onPressed: isConnected ? _joinRoom : null,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.orange,
-                                      foregroundColor: Colors.white,
-                                    ),
-                                    child: const Text('Join Room'),
-                                  ),
-                                ],
-                              ),
-                              if (currentRoomId.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 8),
-                                  child: Text(
-                                    'Current Room: $currentRoomId',
-                                    style: const TextStyle(
-                                      color: Colors.orange,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                            ],
                           ),
                         ),
                         
@@ -461,7 +379,6 @@ class _WebSocketScreenState extends BaseScreenState<WebSocketScreen> {
                               // Color code messages based on type
                               if (message.contains('✅')) messageColor = Colors.green.shade50;
                               else if (message.contains('❌') || message.contains('🚨')) messageColor = Colors.red.shade50;
-                              else if (message.contains('🏠')) messageColor = Colors.orange.shade50;
                               else if (message.contains('💬')) messageColor = Colors.blue.shade50;
                               
                               return Container(

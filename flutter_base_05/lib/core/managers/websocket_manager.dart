@@ -6,6 +6,7 @@ import '../../tools/logging/logger.dart';
 import '../../utils/consts/config.dart';
 import '../../modules/login_module/login_module.dart';
 import '../managers/module_manager.dart';
+import '../managers/ws_event_manager.dart';
 import '../models/websocket_events.dart';
 
 class WebSocketManager {
@@ -32,14 +33,16 @@ class WebSocketManager {
   final StreamController<RoomEvent> _roomController = StreamController<RoomEvent>.broadcast();
   final StreamController<ErrorEvent> _errorController = StreamController<ErrorEvent>.broadcast();
   
-  // Event handling
-  final Map<String, Function(Map<String, dynamic>)> _eventHandlers = {};
+  // Note: Event handling is now delegated to WSEventManager
   
   // Token management
   Timer? _tokenRefreshTimer;
   
   // Module manager for accessing LoginModule
   final ModuleManager _moduleManager = ModuleManager();
+  
+  // Event manager instance (singleton)
+  WSEventManager? _eventManager;
 
   // Getters
   IO.Socket? get socket => _socket;
@@ -56,6 +59,12 @@ class WebSocketManager {
   static WebSocketManager get instance {
     Logger().info("🔍 WebSocketManager.instance getter called");
     return _instance;
+  }
+
+  /// Get the event manager instance
+  WSEventManager get eventManager {
+    _eventManager ??= WSEventManager.instance;
+    return _eventManager!;
   }
 
   /// Check if connected - direct socket check (no context needed)
@@ -154,9 +163,12 @@ class WebSocketManager {
         },
       });
       _log.info("🔍 Socket created: ${_socket != null}");
-
+      
       // Set up event listeners
       _setupEventHandlers();
+      
+      // Initialize event manager
+      eventManager.initialize();
       
       // Start token refresh timer
       _startTokenRefreshTimer();
@@ -194,7 +206,7 @@ class WebSocketManager {
       _connectionController.add(event);
       _eventController.add(event);
       
-      _handleEvent('connect', {});
+      // Events are handled through the stream system, not direct handlers
     });
 
     _socket!.onDisconnect((_) {
@@ -211,7 +223,7 @@ class WebSocketManager {
       _connectionController.add(event);
       _eventController.add(event);
       
-      _handleEvent('disconnect', {});
+      // Events are handled through the stream system, not direct handlers
     });
 
     // Use 'connect_error' event instead of onConnectError to avoid conflicts
@@ -230,7 +242,7 @@ class WebSocketManager {
       _connectionController.add(event);
       _eventController.add(event);
       
-      _handleEvent('error', {'error': error.toString()});
+      // Events are handled through the stream system, not direct handlers
     });
 
     _socket!.on('session_data', (data) {
@@ -240,10 +252,10 @@ class WebSocketManager {
       final event = SessionDataEvent(data);
       _eventController.add(event);
       
-      _handleEvent('session_update', data);
+      // Events are handled through the stream system, not direct handlers
     });
 
-    _socket!.on('join_room_success', (data) {
+    _socket!.on('room_joined', (data) {
       _log.info("🏠 Successfully joined room: $data");
       
       // Emit room event
@@ -255,7 +267,22 @@ class WebSocketManager {
       _roomController.add(event);
       _eventController.add(event);
       
-      _handleEvent('room_joined', data);
+      // Events are handled through the stream system, not direct handlers
+    });
+
+    _socket!.on('join_room_success', (data) {
+      _log.info("🏠 Join room success: $data");
+      
+      // Emit room event (same as room_joined)
+      final event = RoomEvent(
+        roomId: data['room_id'] ?? '',
+        roomData: data,
+        action: 'joined',
+      );
+      _roomController.add(event);
+      _eventController.add(event);
+      
+      // Events are handled through the stream system, not direct handlers
     });
 
     _socket!.on('join_room_error', (data) {
@@ -269,7 +296,7 @@ class WebSocketManager {
       _errorController.add(errorEvent);
       _eventController.add(errorEvent);
       
-      _handleEvent('join_room_error', data);
+      // Events are handled through the stream system, not direct handlers
     });
 
     _socket!.on('create_room_success', (data) {
@@ -284,7 +311,22 @@ class WebSocketManager {
       _roomController.add(event);
       _eventController.add(event);
       
-      _handleEvent('create_room_success', data);
+      // Events are handled through the stream system, not direct handlers
+    });
+
+    _socket!.on('room_created', (data) {
+      _log.info("🏠 Room created: $data");
+      
+      // Emit room event
+      final event = RoomEvent(
+        roomId: data['room_id'] ?? '',
+        roomData: data,
+        action: 'created',
+      );
+      _roomController.add(event);
+      _eventController.add(event);
+      
+      // Events are handled through the stream system, not direct handlers
     });
 
     _socket!.on('create_room_error', (data) {
@@ -298,7 +340,7 @@ class WebSocketManager {
       _errorController.add(errorEvent);
       _eventController.add(errorEvent);
       
-      _handleEvent('create_room_error', data);
+      // Events are handled through the stream system, not direct handlers
     });
 
     _socket!.on('message', (data) {
@@ -314,7 +356,7 @@ class WebSocketManager {
       _messageController.add(event);
       _eventController.add(event);
       
-      _handleEvent('message', data);
+      // Events are handled through the stream system, not direct handlers
     });
 
     _socket!.on('error', (data) {
@@ -328,37 +370,14 @@ class WebSocketManager {
       _errorController.add(errorEvent);
       _eventController.add(errorEvent);
       
-      _handleEvent('error', data);
+      // Events are handled through the stream system, not direct handlers
     });
 
-    // Register custom event handlers
-    _eventHandlers.forEach((event, handler) {
-      _socket!.on(event, (data) {
-        _log.info("📨 Received custom event '$event': $data");
-        
-        // Emit custom event
-        final customEvent = CustomEvent(event, data);
-        _eventController.add(customEvent);
-        
-        _handleEvent(event, data);
-      });
-    });
+    // Note: Custom event handling is now delegated to WSEventManager
   }
 
-  /// Handle events and broadcast to stream
-  void _handleEvent(String event, Map<String, dynamic> data) {
-    // Call registered handler if exists
-    final handler = _eventHandlers[event];
-    if (handler != null) {
-      handler(data);
-    }
-  }
-
-  /// Register custom event handler
-  void registerEventHandler(String event, Function(Map<String, dynamic>) handler) {
-    _eventHandlers[event] = handler;
-    _log.info("✅ Registered handler for event: $event");
-  }
+  /// Note: All events are now handled through the stream system
+  /// and delegated to WSEventManager for processing
 
   /// Start token refresh timer
   void _startTokenRefreshTimer() {
@@ -402,7 +421,7 @@ class WebSocketManager {
       _log.info("✅ WebSocket socket is already connected");
       return true;
     }
-    
+
     // Check if we're already connecting
     if (_isConnecting) {
       _log.info("🔄 WebSocket is already connecting, waiting...");
@@ -762,8 +781,8 @@ class WebSocketManager {
 
   /// Get current connection status
   Map<String, dynamic> getStatus() {
-    return {
-      'isInitialized': _isInitialized,
+      return {
+        'isInitialized': _isInitialized,
       'connected': isConnected,
       'sessionId': _socket?.id,
       'error': null,
@@ -783,7 +802,6 @@ class WebSocketManager {
       _messageController.close();
       _roomController.close();
       _errorController.close();
-      _eventHandlers.clear();
       _isInitialized = false;
       
       _log.info("🗑️ WebSocket manager disposed");
