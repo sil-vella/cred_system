@@ -8,6 +8,8 @@ from core.managers.websockets.ws_event_manager import WSEventManager
 from core.managers.websockets.ws_room_manager import WSRoomManager
 from core.managers.websockets.ws_session_manager import WSSessionManager
 from core.managers.websockets.ws_broadcast_manager import WSBroadcastManager
+from core.managers.websockets.ws_event_listeners import WSEventListeners
+from core.managers.websockets.ws_event_handlers import WSEventHandlers
 from core.validators.websocket_validators import WebSocketValidator
 from utils.config.config import Config
 import time
@@ -53,6 +55,10 @@ class WebSocketManager:
         self.room_manager = WSRoomManager()
         self.session_manager = None  # Will be initialized when JWT manager is set
         self.broadcast_manager = None  # Will be initialized after session manager
+        
+        # Initialize event handlers and listeners
+        self.event_handlers = WSEventHandlers(self)
+        self.event_listeners = WSEventListeners(self, self.event_handlers)
         
         custom_log("WebSocketManager initialized")
 
@@ -247,169 +253,17 @@ class WebSocketManager:
 
     def initialize(self, app, use_builtin_handlers=True):
         """Initialize the WebSocket manager with the Flask app."""
+        custom_log("🔧 [WS-INIT] Initializing WebSocket manager...")
         self.socketio.init_app(app)
-        
-        # Register catch-all handler for debugging
-        @self.socketio.on('*')
-        def catch_all(event, data=None):
-            custom_log(f"DEBUG - Received event: {event} with data: {data}")
-        
-        @self.socketio.on('join_game')
-        def debug_join_game(data=None):
-            custom_log(f"DEBUG - join_game event received with data: {data}")
+        custom_log("🔧 [WS-INIT] SocketIO initialized with app")
         
         if use_builtin_handlers:
-            # Register built-in handlers
-            @self.socketio.on('connect')
-            def handle_connect():
-                session_id = request.sid
-                custom_log(f"DEBUG - Client connected: {session_id}")
-                
-                # Check rate limits
-                client_id = request.args.get('client_id', session_id)
-                if not self.check_rate_limit(client_id, 'connections'):
-                    custom_log(f"Rate limit exceeded for connection: {client_id}")
-                    return False
-                
-                # Update rate limit
-                self.update_rate_limit(client_id, 'connections')
-                
-                # Store basic session data
-                session_data = {
-                    'session_id': session_id,
-                    'connected_at': datetime.now().isoformat(),
-                    'client_id': client_id,
-                    'rooms': set(),
-                    'user_roles': set(),
-                    'last_activity': datetime.now().isoformat()
-                }
-                
-                # Store session data
-                self.store_session_data(session_id, session_data)
-                
-                # Emit connection success
-                emit('connect_success', {
-                    'session_id': session_id,
-                    'status': 'connected',
-                    'timestamp': datetime.now().isoformat()
-                })
-                
-                custom_log(f"✅ Client connected successfully: {session_id}")
-                return True
-
-            @self.socketio.on('disconnect')
-            def handle_disconnect():
-                session_id = request.sid
-                custom_log(f"DEBUG - Client disconnected: {session_id}")
-                
-                # Get session data
-                session_data = self.get_session_data(session_id)
-                if session_data:
-                    # Clean up room memberships
-                    self._cleanup_room_memberships(session_id, session_data)
-                    
-                    # Clean up session data
-                    self.cleanup_session_data(session_id)
-                    
-                    custom_log(f"✅ Client disconnected and cleaned up: {session_id}")
-                else:
-                    custom_log(f"⚠️ No session data found for disconnected client: {session_id}")
-
-            @self.socketio.on('join')
-            def handle_join(data=None):
-                session_id = request.sid
-                custom_log(f"DEBUG - join event received for session {session_id} with data: {data}")
-                
-                if not data:
-                    emit('join_error', {'error': 'No data provided'})
-                    return
-                
-                room_id = data.get('room_id')
-                if not room_id:
-                    emit('join_error', {'error': 'No room_id provided'})
-                    return
-                
-                # Get session data
-                session_data = self.get_session_data(session_id)
-                if not session_data:
-                    emit('join_error', {'error': 'No session data found'})
-                    return
-                
-                # Join room
-                success = self.join_room(room_id, session_id, 
-                                       session_data.get('user_id'), 
-                                       session_data.get('user_roles'))
-                
-                if success:
-                    emit('join_success', {
-                        'room_id': room_id,
-                        'session_id': session_id,
-                        'timestamp': datetime.now().isoformat()
-                    })
-                else:
-                    emit('join_error', {'error': 'Failed to join room'})
-
-            @self.socketio.on('create_room')
-            def handle_create_room(data=None):
-                session_id = request.sid
-                custom_log(f"DEBUG - create_room event received for session {session_id} with data: {data}")
-                
-                if not data:
-                    emit('create_room_error', {'error': 'No data provided'})
-                    return
-                
-                # Get session data
-                session_data = self.get_session_data(session_id)
-                if not session_data:
-                    emit('create_room_error', {'error': 'No session data found'})
-                    return
-                
-                # Extract room data
-                room_id = data.get('room_id')
-                permission = data.get('permission', 'public')
-                owner_id = session_data.get('user_id')
-                
-                # Generate room_id if not provided
-                if not room_id:
-                    import uuid
-                    room_id = f"room_{uuid.uuid4().hex[:8]}"
-                    custom_log(f"Generated room_id: {room_id}")
-                
-                # Create room
-                success = self.create_room(room_id, permission, owner_id)
-                
-                if success:
-                    # Join the room after creation
-                    join_success = self.join_room(room_id, session_id, 
-                                                session_data.get('user_id'), 
-                                                session_data.get('user_roles'))
-                    
-                    if join_success:
-                        # Emit create_room_success event
-                        emit('create_room_success', {
-                            'room_id': room_id,
-                            'permission': permission,
-                            'owner_id': owner_id,
-                            'session_id': session_id,
-                            'timestamp': datetime.now().isoformat(),
-                            'current_size': 1,
-                            'max_size': 10
-                        })
-                        
-                        # Also emit room_joined event for the Flutter app
-                        emit('room_joined', {
-                            'room_id': room_id,
-                            'permission': permission,
-                            'owner_id': owner_id,
-                            'session_id': session_id,
-                            'timestamp': datetime.now().isoformat(),
-                            'current_size': 1,
-                            'max_size': 10
-                        })
-                    else:
-                        emit('create_room_error', {'error': 'Room created but failed to join'})
-                else:
-                    emit('create_room_error', {'error': 'Failed to create room'})
+            custom_log("🔧 [WS-INIT] Registering builtin handlers...")
+            
+            # Register all event listeners through the organized structure
+            self.event_listeners.register_all_listeners()
+            
+            custom_log("🔧 [WS-INIT] Builtin handlers registered")
 
     def set_jwt_manager(self, jwt_manager):
         """Set the JWT manager instance and initialize dependent managers."""
@@ -558,137 +412,13 @@ class WebSocketManager:
 
     def register_handler(self, event: str, handler: Callable):
         """Register a WebSocket event handler without authentication."""
-        @self.socketio.on(event)
-        def wrapped_handler(data=None):
-            try:
-                # Skip validation for special events
-                if event in ['connect', 'disconnect']:
-                    # For connect event, ensure we're not passing any data that might contain sets
-                    if event == 'connect':
-                        return handler()
-                    return handler(data)
-                    
-                # Ensure data is a dictionary if None is provided
-                if data is None:
-                    data = {}
-                    
-                # Validate event payload
-                error = self.validator.validate_event_payload(event, data)
-                if error:
-                    custom_log(f"Validation error in {event} handler: {error}")
-                    return {'status': 'error', 'message': str(error)}
-                    
-                # Validate message size based on event type
-                if event == 'message':
-                    error = self.validator.validate_message(data)
-                elif event == 'binary':
-                    error = self.validator.validate_binary_data(data)
-                else:
-                    error = self.validator.validate_json_data(data)
-                    
-                if error:
-                    custom_log(f"Message size validation error in {event} handler: {error}")
-                    return {'status': 'error', 'message': str(error)}
-                    
-                # Ensure data is JSON serializable
-                serializable_data = {}
-                for key, value in data.items():
-                    if isinstance(value, (set, datetime)):
-                        serializable_data[key] = str(value)
-                    elif isinstance(value, (int, float)):
-                        serializable_data[key] = str(value)
-                    else:
-                        serializable_data[key] = value
-                
-                # Call handler with serializable data
-                result = handler(serializable_data)
-                
-                # Handle async results
-                if hasattr(result, '__await__'):
-                    custom_log(f"DEBUG - Handler returned a coroutine, awaiting it")
-                    import asyncio
-                    try:
-                        loop = asyncio.get_event_loop()
-                    except RuntimeError:
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                    try:
-                        result = loop.run_until_complete(result)
-                        return result
-                    except Exception as e:
-                        custom_log(f"ERROR - Error awaiting coroutine: {str(e)}")
-                        return {'status': 'error', 'message': str(e)}
-                
-                return result
-                
-            except Exception as e:
-                custom_log(f"ERROR - Error in {event} handler: {str(e)}")
-                return {'status': 'error', 'message': str(e)}
+        # This method is now deprecated - all handlers are registered through ws_event_listeners.py
+        custom_log(f"WARNING - register_handler called for {event} - use ws_event_listeners.py instead")
 
     def register_authenticated_handler(self, event: str, handler: Callable):
         """Register a WebSocket event handler with authentication."""
-        @self.socketio.on(event)
-        def wrapped_handler(data=None):
-            custom_log(f"DEBUG - Received event: {event} with data: {data}")
-            try:
-                # Skip validation for special events
-                if event in ['connect', 'disconnect']:
-                    custom_log(f"DEBUG - Skipping validation for special event: {event}")
-                    return handler(data)
-                    
-                # Get session ID
-                session_id = request.sid
-                if not session_id:
-                    custom_log(f"ERROR - No session ID found for event: {event}")
-                    return {'status': 'error', 'message': 'No session ID'}
-                custom_log(f"DEBUG - Processing event {event} for session: {session_id}")
-                    
-                # Call handler with session ID and data
-                try:
-                    result = handler(data)
-                    if hasattr(result, '__await__'):
-                        custom_log(f"DEBUG - Handler returned a coroutine, awaiting it")
-                        import asyncio
-                        try:
-                            loop = asyncio.get_event_loop()
-                        except RuntimeError:
-                            loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(loop)
-                        try:
-                            result = loop.run_until_complete(result)
-                            return result
-                        except Exception as e:
-                            custom_log(f"ERROR - Error awaiting coroutine: {str(e)}")
-                            return {'status': 'error', 'message': str(e)}
-                    return result
-                    
-                except TypeError as e:
-                    # If handler doesn't accept session_id, call with just data
-                    custom_log(f"WARNING - Handler doesn't accept session_id, calling with just data: {e}")
-                    try:
-                        result = handler(data or {})
-                        if hasattr(result, '__await__'):
-                            custom_log(f"DEBUG - Handler returned a coroutine, awaiting it")
-                            import asyncio
-                            try:
-                                loop = asyncio.get_event_loop()
-                            except RuntimeError:
-                                loop = asyncio.new_event_loop()
-                                asyncio.set_event_loop(loop)
-                            try:
-                                result = loop.run_until_complete(result)
-                                return result
-                            except Exception as e:
-                                custom_log(f"ERROR - Error awaiting coroutine: {str(e)}")
-                                return {'status': 'error', 'message': str(e)}
-                        return result
-                    except Exception as e:
-                        custom_log(f"ERROR - Error in handler: {str(e)}")
-                        return {'status': 'error', 'message': str(e)}
-                    
-            except Exception as e:
-                custom_log(f"CRITICAL ERROR - Error in {event} handler: {str(e)}")
-                return {'status': 'error', 'message': str(e)}
+        # This method is now deprecated - all handlers are registered through ws_event_listeners.py
+        custom_log(f"WARNING - register_authenticated_handler called for {event} - use ws_event_listeners.py instead")
 
     def create_room(self, room_id: str, permission: str = "public", 
                    owner_id: Optional[int] = None,
@@ -924,7 +654,10 @@ class WebSocketManager:
             # Update session data
             session_data = self.get_session_data(session_id)
             if session_data and 'rooms' in session_data:
-                session_data['rooms'].discard(room_id)
+                # Convert to set if it's a list, then remove the room
+                rooms_set = set(session_data['rooms']) if isinstance(session_data['rooms'], list) else session_data['rooms']
+                rooms_set.discard(room_id)
+                session_data['rooms'] = list(rooms_set)  # Convert back to list for storage
                 session_data['last_activity'] = datetime.now().isoformat()
                 self.store_session_data(session_id, session_data)
             
@@ -1077,7 +810,8 @@ class WebSocketManager:
                 session_data = self.get_session_data(session_id)
             
             if session_data and 'rooms' in session_data:
-                rooms = session_data['rooms']
+                # Convert to set if it's a list to ensure proper iteration
+                rooms = set(session_data['rooms']) if isinstance(session_data['rooms'], list) else session_data['rooms']
                 for room_id in rooms:
                     # Remove from room
                     if room_id in self.rooms:

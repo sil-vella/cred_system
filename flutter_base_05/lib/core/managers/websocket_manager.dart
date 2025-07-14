@@ -343,6 +343,35 @@ class WebSocketManager {
       // Events are handled through the stream system, not direct handlers
     });
 
+    _socket!.on('leave_room_success', (data) {
+      _log.info("✅ Successfully left room: $data");
+      
+      // Emit room event
+      final event = RoomEvent(
+        roomId: data['room_id'] ?? '',
+        roomData: data,
+        action: 'left',
+      );
+      _roomController.add(event);
+      _eventController.add(event);
+      
+      // Events are handled through the stream system, not direct handlers
+    });
+
+    _socket!.on('leave_room_error', (data) {
+      _log.error("🚨 Failed to leave room: $data");
+      
+      // Emit error event
+      final errorEvent = ErrorEvent(
+        'Failed to leave room',
+        details: data.toString(),
+      );
+      _errorController.add(errorEvent);
+      _eventController.add(errorEvent);
+      
+      // Events are handled through the stream system, not direct handlers
+    });
+
     _socket!.on('message', (data) {
       _log.info("💬 Received message: $data");
       
