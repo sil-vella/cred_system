@@ -62,9 +62,9 @@ class ConnectionsApiModule extends ModuleBase {
   Future<String?> refreshAccessToken(String refreshToken) async {
     if (_authManager == null) {
       _log.error('❌ AuthManager not available for token refresh');
-      return null;
-    }
-
+        return null;
+      }
+      
     try {
       _log.info('🔄 Refreshing access token via AuthManager...');
       return await _authManager!.refreshAccessToken(refreshToken);

@@ -3,8 +3,8 @@ import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'dart:convert';
 import 'dart:async';
 import '../core/00_base/screen_base.dart';
-import '../core/managers/websocket_manager.dart';
-import '../core/managers/ws_event_manager.dart';
+import '../core/managers/websockets/websocket_manager.dart';
+import '../core/managers/websockets/ws_event_manager.dart';
 import '../core/managers/state_manager.dart';
 import '../core/models/websocket_events.dart';
 

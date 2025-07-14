@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import '../../tools/logging/logger.dart';
-import '../models/websocket_events.dart';
+import '../../../tools/logging/logger.dart';
+import '../../models/websocket_events.dart';
 import 'websocket_manager.dart';
-import 'state_manager.dart';
+import '../state_manager.dart';
 
 /// WebSocket Event Manager - Centralized event handling for WebSocket operations
 class WSEventManager {
@@ -260,6 +260,11 @@ class WSEventManager {
       offEvent(eventType, wrappedCallback);
     };
     onEvent(eventType, wrappedCallback);
+  }
+
+  /// Trigger callbacks for a specific event type (public method)
+  void triggerCallbacks(String eventType, Map<String, dynamic> data) {
+    _triggerCallbacks(eventType, data);
   }
 
   // ==================== ROOM MANAGEMENT ====================

@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'dart:async';
 import 'dart:convert';
-import '../../tools/logging/logger.dart';
-import '../../utils/consts/config.dart';
-import '../../modules/login_module/login_module.dart';
-import '../managers/module_manager.dart';
-import '../managers/ws_event_manager.dart';
-import '../models/websocket_events.dart';
+import '../../../tools/logging/logger.dart';
+import '../../../utils/consts/config.dart';
+import '../../../modules/login_module/login_module.dart';
+import '../module_manager.dart';
+import '../state_manager.dart';
+import 'ws_event_manager.dart';
+import 'ws_event_listener.dart';
+import 'ws_event_handler.dart';
+import '../../models/websocket_events.dart';
 
 class WebSocketManager {
   static final WebSocketManager _instance = WebSocketManager._internal();
@@ -43,6 +46,10 @@ class WebSocketManager {
   
   // Event manager instance (singleton)
   WSEventManager? _eventManager;
+  
+  // New centralized event listener and handler
+  WSEventListener? _eventListener;
+  WSEventHandler? _eventHandler;
 
   // Getters
   IO.Socket? get socket => _socket;
@@ -164,11 +171,27 @@ class WebSocketManager {
       });
       _log.info("🔍 Socket created: ${_socket != null}");
       
-      // Set up event listeners
-      _setupEventHandlers();
-      
       // Initialize event manager
       eventManager.initialize();
+      
+      // Initialize new centralized event listener and handler
+      final stateManager = StateManager();
+      _eventHandler = WSEventHandler(
+        socket: _socket,
+        eventManager: eventManager,
+        stateManager: stateManager,
+        moduleManager: _moduleManager,
+      );
+      
+      _eventListener = WSEventListener(
+        socket: _socket,
+        eventHandler: _eventHandler!,
+        stateManager: stateManager,
+        moduleManager: _moduleManager,
+      );
+      
+      // Register all event listeners
+      _eventListener!.registerAllListeners();
       
       // Start token refresh timer
       _startTokenRefreshTimer();
@@ -648,8 +671,6 @@ class WebSocketManager {
     }
 
     try {
-      _log.info("🏠 Joining room: $roomId for user: $userId");
-      
       final data = {
         'room_id': roomId,
         'user_id': userId,
@@ -729,8 +750,6 @@ class WebSocketManager {
     }
 
     try {
-      _log.info("🏠 Leaving room: $roomId");
-      
       final data = {
         'room_id': roomId,
       };

@@ -626,7 +626,7 @@ class WebSocketManager:
         """Join a room."""
         return self._join_room_internal(room_id, session_id, user_id, user_roles)
 
-    def leave_room(self, room_id: str, session_id: str):
+    def leave_room(self, room_id: str, session_id: str) -> bool:
         """Leave a room."""
         try:
             custom_log(f"DEBUG - Leaving room {room_id} for session {session_id}")
@@ -665,9 +665,11 @@ class WebSocketManager:
             self.update_user_presence(session_id, 'online')
             
             custom_log(f"✅ Successfully left room {room_id} for session {session_id}")
+            return True
             
         except Exception as e:
             custom_log(f"❌ Error leaving room {room_id} for session {session_id}: {str(e)}")
+            return False
 
     async def broadcast_to_room(self, room_id: str, event: str, data: Any):
         """Broadcast message to a specific room."""
