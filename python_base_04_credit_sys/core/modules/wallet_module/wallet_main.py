@@ -5,6 +5,20 @@ from typing import Dict, Any
 
 
 class WalletModule(BaseModule):
+"""
+class WalletModule - Provides business logic and functionality
+
+Attributes:
+    health_status: TODO: Add description
+
+Methods:
+    __init__(): TODO: Add description
+    initialize(): TODO: Add description
+    register_routes(): TODO: Add description
+    wallet_info(): TODO: Add description
+    health_check(): TODO: Add description
+
+"""
     def __init__(self, app_manager=None):
         """Initialize the WalletModule."""
         super().__init__(app_manager)

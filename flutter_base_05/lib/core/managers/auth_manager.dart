@@ -17,6 +17,15 @@ enum AuthStatus {
   error
 }
 
+/// class AuthManager - Manages application state and operations
+///
+/// Manages application state and operations
+///
+/// Example:
+/// ```dart
+/// final authmanager = AuthManager();
+/// ```
+///
 class AuthManager extends ChangeNotifier {
   static final Logger _log = Logger();
   static final AuthManager _instance = AuthManager._internal();

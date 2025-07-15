@@ -16,6 +16,34 @@ from core.modules.base_module import BaseModule
 
 
 class CommunicationsModule(BaseModule):
+"""
+class CommunicationsModule - Provides business logic and functionality
+
+Attributes:
+    health_status: TODO: Add description
+    all_data: TODO: Add description
+    pattern: TODO: Add description
+    keys: TODO: Add description
+    db_healthy: TODO: Add description
+    redis_healthy: TODO: Add description
+    api_key_health: TODO: Add description
+    pattern: TODO: Add description
+    keys: TODO: Add description
+    queue_status: TODO: Add description
+
+Methods:
+    __init__(): TODO: Add description
+    initialize(): TODO: Add description
+    register_routes(): TODO: Add description
+    initialize_database(): TODO: Add description
+    _verify_database_connection(): TODO: Add description
+    home(): TODO: Add description
+    get_all_database_data(): TODO: Add description
+    _invalidate_caches(): TODO: Add description
+    health_check(): TODO: Add description
+    dispose(): TODO: Add description
+
+"""
     def __init__(self, app_manager=None):
         """Initialize the CommunicationsModule module with Redis and database connections."""
         super().__init__(app_manager)

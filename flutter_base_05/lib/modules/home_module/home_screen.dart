@@ -3,6 +3,15 @@ import 'package:go_router/go_router.dart';
 import '../../core/00_base/screen_base.dart';
 import '../../utils/consts/theme_consts.dart';
 
+/// widget HomeScreen - Flutter widget for UI components
+///
+/// A Flutter widget that provides UI functionality
+///
+/// Example:
+/// ```dart
+/// HomeScreen()
+/// ```
+///
 class HomeScreen extends BaseScreen {
   const HomeScreen({Key? key}) : super(key: key);
 
@@ -13,6 +22,15 @@ class HomeScreen extends BaseScreen {
   String computeTitle(BuildContext context) => 'Home';
 }
 
+/// widget _HomeScreenState - Flutter widget for UI components
+///
+/// A Flutter widget that provides UI functionality
+///
+/// Example:
+/// ```dart
+/// _HomeScreenState()
+/// ```
+///
 class _HomeScreenState extends BaseScreenState<HomeScreen> {
   @override
   Widget buildContent(BuildContext context) {

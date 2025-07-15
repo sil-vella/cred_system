@@ -1,6 +1,15 @@
 import 'dart:developer' as developer;
 import '../../utils/consts/config.dart';
 
+/// class Logger - Handles logging operations
+///
+/// Provides core functionality
+///
+/// Example:
+/// ```dart
+/// final logger = Logger();
+/// ```
+///
 class Logger {
   // Private constructor
   Logger._();

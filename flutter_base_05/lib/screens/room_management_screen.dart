@@ -8,6 +8,15 @@ import '../core/managers/websockets/ws_event_manager.dart';
 import '../core/managers/state_manager.dart';
 import '../core/models/websocket_events.dart';
 
+/// widget RoomManagementScreen - Flutter widget for UI components
+///
+/// A Flutter widget that provides UI functionality
+///
+/// Example:
+/// ```dart
+/// RoomManagementScreen()
+/// ```
+///
 class RoomManagementScreen extends BaseScreen {
   const RoomManagementScreen({Key? key}) : super(key: key);
 
@@ -18,6 +27,15 @@ class RoomManagementScreen extends BaseScreen {
   BaseScreenState<RoomManagementScreen> createState() => _RoomManagementScreenState();
 }
 
+/// widget _RoomManagementScreenState - Flutter widget for UI components
+///
+/// A Flutter widget that provides UI functionality
+///
+/// Example:
+/// ```dart
+/// _RoomManagementScreenState()
+/// ```
+///
 class _RoomManagementScreenState extends BaseScreenState<RoomManagementScreen> {
   
   // Controllers

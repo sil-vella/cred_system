@@ -7,6 +7,15 @@ import '../../screens/account_screen/account_screen.dart';
 import '../../screens/room_management_screen.dart';
 import '../00_base/module_base.dart';
 
+/// widget RegisteredRoute - Flutter widget for UI components
+///
+/// A Flutter widget that provides UI functionality
+///
+/// Example:
+/// ```dart
+/// RegisteredRoute()
+/// ```
+///
 class RegisteredRoute {
   final String path;
   final Widget Function(BuildContext) screen;
@@ -36,6 +45,15 @@ class RegisteredRoute {
   }
 }
 
+/// widget NavigationManager - Manages application state and operations
+///
+/// A Flutter widget that provides UI functionality
+///
+/// Example:
+/// ```dart
+/// NavigationManager()
+/// ```
+///
 class NavigationManager extends ChangeNotifier {
   static final NavigationManager _instance = NavigationManager._internal();
   factory NavigationManager() => _instance;

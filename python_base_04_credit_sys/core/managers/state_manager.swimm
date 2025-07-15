@@ -1,0 +1,18 @@
+
+# StateManager Documentation
+
+This file documents the StateManager class and its usage.
+
+## Overview
+The StateManager is a singleton pattern implementation that handles global state management.
+
+## Key Methods
+- `register_state()`: Register a new state
+- `get_state()`: Retrieve state by ID
+- `update_state()`: Update existing state
+
+## Usage Example
+```python
+state_manager = StateManager()
+state_manager.register_state("user_session", StateType.USER, {"user_id": "123"})
+```

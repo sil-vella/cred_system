@@ -2,6 +2,15 @@ import 'package:http_interceptor/http_interceptor.dart';
 import 'package:http/http.dart';
 import '../../core/managers/auth_manager.dart';
 
+/// class AuthInterceptor - Handles authentication and authorization
+///
+/// Handles authentication and authorization
+///
+/// Example:
+/// ```dart
+/// final authinterceptor = AuthInterceptor();
+/// ```
+///
 class AuthInterceptor implements InterceptorContract {
   AuthManager? _authManager;
 

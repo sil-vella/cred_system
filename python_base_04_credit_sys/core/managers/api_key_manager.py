@@ -10,6 +10,101 @@ from flask import request, jsonify
 
 
 class APIKeyManager:
+"""
+class APIKeyManager - Manages application state and operations
+
+Attributes:
+    filename: TODO: Add description
+    health_status: TODO: Add description
+    app_name: TODO: Add description
+    secret_file: TODO: Add description
+    secret_file: TODO: Add description
+    keys_to_clear: TODO: Add description
+    pattern1: TODO: Add description
+    keys: TODO: Add description
+    patterns: TODO: Add description
+    usage_pattern: TODO: Add description
+    usage_keys: TODO: Add description
+    keys_to_clear: TODO: Add description
+    pipeline: TODO: Add description
+    cleared_count: TODO: Add description
+    results: TODO: Add description
+    successful_deletions: TODO: Add description
+    pipeline: TODO: Add description
+    timestamp: TODO: Add description
+    unique_id: TODO: Add description
+    api_key: TODO: Add description
+    key_data: TODO: Add description
+    redis_key: TODO: Add description
+    success: TODO: Add description
+    metadata: TODO: Add description
+    metadata_key: TODO: Add description
+    stored_keys: TODO: Add description
+    redis_key: TODO: Add description
+    key_data: TODO: Add description
+    redis_key: TODO: Add description
+    key_data: TODO: Add description
+    keys: TODO: Add description
+    pattern: TODO: Add description
+    api_keys: TODO: Add description
+    key_data: TODO: Add description
+    data: TODO: Add description
+    required_fields: TODO: Add description
+    app_id: TODO: Add description
+    app_name: TODO: Add description
+    permissions: TODO: Add description
+    existing_api_key: TODO: Add description
+    api_key: TODO: Add description
+    data: TODO: Add description
+    api_key: TODO: Add description
+    key_data: TODO: Add description
+    data: TODO: Add description
+    api_key: TODO: Add description
+    success: TODO: Add description
+    keys: TODO: Add description
+    stored_keys: TODO: Add description
+    redis_healthy: TODO: Add description
+    key_data: TODO: Add description
+    keys: TODO: Add description
+    key_data: TODO: Add description
+    api_key_files: TODO: Add description
+    app_id: TODO: Add description
+    success: TODO: Add description
+    key_data: TODO: Add description
+    api_key: TODO: Add description
+    secret_file: TODO: Add description
+    masked_key: TODO: Add description
+    redis_key: TODO: Add description
+    key_data: TODO: Add description
+    app_id: TODO: Add description
+    api_key: TODO: Add description
+    api_key: TODO: Add description
+
+Methods:
+    __init__(): TODO: Add description
+    _get_secret_file_path(): TODO: Add description
+    _save_api_key_to_file(): TODO: Add description
+    _load_api_key_from_file(): TODO: Add description
+    _get_redis_keys_for_app(): TODO: Add description
+    invalidate_api_key_cache(): TODO: Add description
+    _clear_file_cache(): TODO: Add description
+    _atomic_key_replacement(): TODO: Add description
+    generate_api_key(): TODO: Add description
+    _store_app_metadata(): TODO: Add description
+    get_api_key_for_app(): TODO: Add description
+    list_stored_api_keys(): TODO: Add description
+    validate_api_key(): TODO: Add description
+    revoke_api_key(): TODO: Add description
+    list_api_keys(): TODO: Add description
+    get_app_by_api_key(): TODO: Add description
+    generate_api_key_endpoint(): TODO: Add description
+    validate_api_key_endpoint(): TODO: Add description
+    revoke_api_key_endpoint(): TODO: Add description
+    list_api_keys_endpoint(): TODO: Add description
+    list_stored_api_keys_endpoint(): TODO: Add description
+    health_check(): TODO: Add description
+
+"""
     def __init__(self, redis_manager=None):
         """Initialize the API Key Manager."""
         self.redis_manager = redis_manager if redis_manager else RedisManager()

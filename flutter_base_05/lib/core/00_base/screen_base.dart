@@ -9,6 +9,15 @@ import '../../utils/consts/config.dart';
 import '../../utils/consts/theme_consts.dart';
 import 'drawer_base.dart';
 
+/// widget BaseScreen - Flutter widget for UI components
+///
+/// A Flutter widget that provides UI functionality
+///
+/// Example:
+/// ```dart
+/// BaseScreen()
+/// ```
+///
 abstract class BaseScreen extends StatefulWidget {
   const BaseScreen({Key? key}) : super(key: key);
 
@@ -49,6 +58,15 @@ abstract class BaseScreen extends StatefulWidget {
   BaseScreenState createState();
 }
 
+/// widget BaseScreenState - Flutter widget for UI components
+///
+/// A Flutter widget that provides UI functionality
+///
+/// Example:
+/// ```dart
+/// BaseScreenState()
+/// ```
+///
 abstract class BaseScreenState<T extends BaseScreen> extends State<T> {
   late final AppManager appManager;
   final ModuleManager _moduleManager = ModuleManager();
@@ -424,6 +442,15 @@ class BaseCard extends StatelessWidget {
   }
 }
 
+/// widget BaseButton - Flutter widget for UI components
+///
+/// A Flutter widget that provides UI functionality
+///
+/// Example:
+/// ```dart
+/// BaseButton()
+/// ```
+///
 class BaseButton extends StatelessWidget {
   final String text;
   final VoidCallback onPressed;
@@ -480,6 +507,15 @@ class BaseButton extends StatelessWidget {
   }
 }
 
+/// widget BaseTextField - Flutter widget for UI components
+///
+/// A Flutter widget that provides UI functionality
+///
+/// Example:
+/// ```dart
+/// BaseTextField()
+/// ```
+///
 class BaseTextField extends StatelessWidget {
   final TextEditingController controller;
   final String label;

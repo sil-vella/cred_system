@@ -5,6 +5,18 @@ from flask import request
 import logging
 
 class MetricsCollector:
+"""
+class MetricsCollector - Provides core functionality
+
+Methods:
+    __init__(): TODO: Add description
+    track_request(): TODO: Add description
+    track_credit_transaction(): TODO: Add description
+    update_credit_balance(): TODO: Add description
+    update_mongodb_connections(): TODO: Add description
+    update_redis_connections(): TODO: Add description
+
+"""
     def __init__(self, port: int = 8000):
         """Initialize the metrics collector."""
         self.logger = logging.getLogger(__name__)

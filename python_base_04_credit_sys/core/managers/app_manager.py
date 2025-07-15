@@ -20,6 +20,70 @@ from core.managers.state_manager import StateManager
 
 
 class AppManager:
+"""
+class AppManager - Manages application state and operations
+
+Attributes:
+    public_routes: TODO: Add description
+    public_patterns: TODO: Add description
+    callback_name: TODO: Add description
+    core_path: TODO: Add description
+    project_root: TODO: Add description
+    plugins_dir: TODO: Add description
+    api_key: TODO: Add description
+    auth_header: TODO: Add description
+    token: TODO: Add description
+    base_url: TODO: Add description
+    limit_types: TODO: Add description
+    result: TODO: Add description
+    status: TODO: Add description
+    module: TODO: Add description
+    health: TODO: Add description
+    api_key_data: TODO: Add description
+    payload: TODO: Add description
+    exceeded_types: TODO: Add description
+    retry_after: TODO: Add description
+    response: TODO: Add description
+    result: TODO: Add description
+    limit_types: TODO: Add description
+    duration: TODO: Add description
+    duration: TODO: Add description
+    retry_after: TODO: Add description
+    prefix: TODO: Add description
+    prefix: TODO: Add description
+
+Methods:
+    __init__(): TODO: Add description
+    is_initialized(): TODO: Add description
+    check_database_connection(): TODO: Add description
+    check_redis_connection(): TODO: Add description
+    get_db_manager(): TODO: Add description
+    get_redis_manager(): TODO: Add description
+    get_state_manager(): TODO: Add description
+    initialize(): TODO: Add description
+    run(): TODO: Add description
+    get_plugins_path(): TODO: Add description
+    register_template_dir(): TODO: Add description
+    _update_jinja_loader(): TODO: Add description
+    _setup_rate_limiting(): TODO: Add description
+    _setup_rate_limit_headers(): TODO: Add description
+    _setup_module_endpoints(): TODO: Add description
+    _setup_authentication(): TODO: Add description
+    register_hook(): TODO: Add description
+    register_hook_callback(): TODO: Add description
+    trigger_hook(): TODO: Add description
+    _setup_monitoring(): TODO: Add description
+    _setup_system_metrics(): TODO: Add description
+    check_rate_limit(): TODO: Add description
+    add_rate_limit_headers(): TODO: Add description
+    modules_status(): TODO: Add description
+    module_health(): TODO: Add description
+    authenticate_request(): TODO: Add description
+    before_request(): TODO: Add description
+    after_request(): TODO: Add description
+    update_system_metrics(): TODO: Add description
+
+"""
     def __init__(self):
         # Plugin system removed - ModuleManager is now primary orchestrator
         # self.plugin_manager = PluginManager()  # DEPRECATED

@@ -1,6 +1,22 @@
 from tools.logger.custom_logging import custom_log, function_log, game_play_log, log_function_call
 
 class HooksManager:
+"""
+class HooksManager - Manages application state and operations
+
+Attributes:
+    context_info: TODO: Add description
+    callback_name: TODO: Add description
+
+Methods:
+    __init__(): TODO: Add description
+    register_hook(): TODO: Add description
+    register_hook_callback(): TODO: Add description
+    trigger_hook(): TODO: Add description
+    clear_hook(): TODO: Add description
+    dispose(): TODO: Add description
+
+"""
     def __init__(self):
         # A dictionary to hold hooks and their callbacks with priorities and optional context
         self.hooks = {

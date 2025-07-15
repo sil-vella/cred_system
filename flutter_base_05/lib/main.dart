@@ -46,6 +46,15 @@ void main() async {
   );
 }
 
+/// widget MyApp - Flutter widget for UI components
+///
+/// A Flutter widget that provides UI functionality
+///
+/// Example:
+/// ```dart
+/// MyApp()
+/// ```
+///
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
@@ -53,6 +62,15 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
+/// widget _MyAppState - Flutter widget for UI components
+///
+/// A Flutter widget that provides UI functionality
+///
+/// Example:
+/// ```dart
+/// _MyAppState()
+/// ```
+///
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   final AppManager _appManager = AppManager();
   final StateManager _stateManager = StateManager();

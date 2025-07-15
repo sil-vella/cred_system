@@ -1,0 +1,19 @@
+
+# Authentication Manager Documentation
+
+This file documents the authentication flow and JWT token management.
+
+## Overview
+The AuthManager handles user authentication, token storage, and session validation.
+
+## Key Features
+- JWT token management
+- Secure storage integration
+- Session validation
+- Token refresh
+
+## Usage Example
+```python
+auth_manager = AuthManager()
+token = auth_manager.validate_session()
+```

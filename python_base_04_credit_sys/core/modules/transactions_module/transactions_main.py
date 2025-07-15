@@ -7,6 +7,52 @@ from typing import Dict, Any
 
 
 class TransactionsModule(BaseModule):
+"""
+class TransactionsModule - Provides business logic and functionality
+
+Attributes:
+    health_status: TODO: Add description
+    user_id: TODO: Add description
+    purchases: TODO: Add description
+    failed_payments: TODO: Add description
+    history: TODO: Add description
+    data: TODO: Add description
+    required_fields: TODO: Add description
+    user_id: TODO: Add description
+    amount: TODO: Add description
+    currency: TODO: Add description
+    transaction_data: TODO: Add description
+    transaction_id: TODO: Add description
+    data: TODO: Add description
+    transaction_id: TODO: Add description
+    refund_amount: TODO: Add description
+    reason: TODO: Add description
+    transaction: TODO: Add description
+    refund_data: TODO: Add description
+    refund_id: TODO: Add description
+    data: TODO: Add description
+    required_fields: TODO: Add description
+    user_id: TODO: Add description
+    amount: TODO: Add description
+    currency: TODO: Add description
+    payment_method: TODO: Add description
+    transaction_id: TODO: Add description
+    transaction_data: TODO: Add description
+    result: TODO: Add description
+    queue_status: TODO: Add description
+
+Methods:
+    __init__(): TODO: Add description
+    initialize(): TODO: Add description
+    register_routes(): TODO: Add description
+    transactions_info(): TODO: Add description
+    get_transaction_history(): TODO: Add description
+    process_credit_purchase(): TODO: Add description
+    process_refund(): TODO: Add description
+    buy_credits(): TODO: Add description
+    health_check(): TODO: Add description
+
+"""
     def __init__(self, app_manager=None):
         """Initialize the TransactionsModule."""
         super().__init__(app_manager)

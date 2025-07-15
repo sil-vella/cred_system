@@ -8,6 +8,53 @@ from utils.config.config import Config
 from redis.exceptions import RedisError
 
 class RateLimiterManager:
+"""
+class RateLimiterManager - Manages application state and operations
+
+Attributes:
+    _instance: TODO: Add description
+    _initialized: TODO: Add description
+    auth_header: TODO: Add description
+    prefix: TODO: Add description
+    ban_key: TODO: Add description
+    violations_key: TODO: Add description
+    ban_key: TODO: Add description
+    result: TODO: Add description
+    key: TODO: Add description
+    key: TODO: Add description
+    current: TODO: Add description
+    ttl: TODO: Add description
+    current: TODO: Add description
+    token: TODO: Add description
+    violations: TODO: Add description
+    limit_types: TODO: Add description
+    identifiers: TODO: Add description
+    identifier: TODO: Add description
+    key: TODO: Add description
+    limit_config: TODO: Add description
+    current: TODO: Add description
+    current: TODO: Add description
+    ttl: TODO: Add description
+
+Methods:
+    __new__(): TODO: Add description
+    __init__(): TODO: Add description
+    set_redis_manager(): TODO: Add description
+    _setup_config(): TODO: Add description
+    _get_client_ip(): TODO: Add description
+    _get_user_id(): TODO: Add description
+    _get_api_key(): TODO: Add description
+    _generate_redis_key(): TODO: Add description
+    _generate_ban_key(): TODO: Add description
+    _generate_violations_key(): TODO: Add description
+    _is_banned(): TODO: Add description
+    _track_violation(): TODO: Add description
+    _ban_identifier(): TODO: Add description
+    check_rate_limit(): TODO: Add description
+    reset_rate_limit(): TODO: Add description
+    get_rate_limit_status(): TODO: Add description
+
+"""
     _instance = None
     _initialized = False
 

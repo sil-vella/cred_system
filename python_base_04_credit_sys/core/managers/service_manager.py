@@ -1,6 +1,23 @@
 from tools.logger.custom_logging import custom_log, function_log, game_play_log, log_function_call
 
 class ServicesManager:
+"""
+class ServicesManager - Manages application state and operations
+
+Attributes:
+    service: TODO: Add description
+    service: TODO: Add description
+    result: TODO: Add description
+
+Methods:
+    __init__(): TODO: Add description
+    register_service(): TODO: Add description
+    initialize_services(): TODO: Add description
+    get_service(): TODO: Add description
+    call_service_method(): TODO: Add description
+    dispose(): TODO: Add description
+
+"""
     def __init__(self):
         # A dictionary to hold all registered services
         self.services = {}

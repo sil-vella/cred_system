@@ -3,6 +3,15 @@ import 'package:provider/provider.dart';
 import '../../managers/services_manager.dart';
 import 'ticker_timer.dart';
 
+/// widget TimerWidget - Flutter widget for UI components
+///
+/// A Flutter widget that provides UI functionality
+///
+/// Example:
+/// ```dart
+/// TimerWidget()
+/// ```
+///
 class TimerWidget extends StatefulWidget {
   final String timerKey; // Unique key for each timer instance
   final Duration duration;
@@ -19,6 +28,15 @@ class TimerWidget extends StatefulWidget {
   _TimerWidgetState createState() => _TimerWidgetState();
 }
 
+/// widget _TimerWidgetState - Flutter widget for UI components
+///
+/// A Flutter widget that provides UI functionality
+///
+/// Example:
+/// ```dart
+/// _TimerWidgetState()
+/// ```
+///
 class _TimerWidgetState extends State<TimerWidget> {
   TickerTimer? _tickerTimer;
 
