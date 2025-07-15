@@ -1,4 +1,3 @@
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart' as launcher;
@@ -16,7 +15,6 @@ import 'interceptor.dart';
 class ConnectionsApiModule extends ModuleBase {
   static final Logger _log = Logger();
   final String baseUrl;
-  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
   AuthManager? _authManager;
 
   /// ✅ Use InterceptedClient instead of normal `http`
@@ -55,22 +53,6 @@ class ConnectionsApiModule extends ModuleBase {
     } catch (e) {
       _log.error('❌ Failed to launch URL: $url', error: e);
       return false;
-    }
-  }
-
-  /// ✅ Refresh access token using refresh token (delegates to AuthManager)
-  Future<String?> refreshAccessToken(String refreshToken) async {
-    if (_authManager == null) {
-      _log.error('❌ AuthManager not available for token refresh');
-        return null;
-      }
-      
-    try {
-      _log.info('🔄 Refreshing access token via AuthManager...');
-      return await _authManager!.refreshAccessToken(refreshToken);
-    } catch (e) {
-      _log.error('❌ Failed to refresh token: $e');
-      return null;
     }
   }
 

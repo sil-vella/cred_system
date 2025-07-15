@@ -7,6 +7,7 @@ import '../managers/services_manager.dart';
 import '../managers/state_manager.dart';
 import '../managers/module_manager.dart';
 import '../../modules/connections_api_module/connections_api_module.dart';
+import 'dart:async'; // Added for Timer
 
 enum AuthStatus {
   loggedIn,
@@ -40,6 +41,12 @@ class AuthManager extends ChangeNotifier {
     
     final moduleManager = Provider.of<ModuleManager>(context, listen: false);
     _connectionModule = moduleManager.getModuleByType<ConnectionsApiModule>();
+    
+    // Setup state listener for queued token refreshes
+    _setupStateListener();
+    
+    // Start state-aware token refresh timer
+    startTokenRefreshTimer();
     
     _log.info('✅ AuthManager initialized');
   }
@@ -346,6 +353,110 @@ class AuthManager extends ChangeNotifier {
   bool get isLoggedIn {
     return _sharedPref?.getBool('is_logged_in') ?? false;
   }
+
+  /// ✅ Start state-aware token refresh timer
+  void startTokenRefreshTimer() {
+    _stopTokenRefreshTimer();
+    // Refresh token every 1 hour for configurable token lifetime
+    // Only refresh when NOT in game-related states to avoid interrupting gameplay
+    _tokenRefreshTimer = Timer.periodic(const Duration(hours: 1), (timer) async {
+      _log.info("🔄 Token refresh timer triggered...");
+      
+      // Check main app state before attempting refresh
+      final stateManager = StateManager();
+      final mainState = stateManager.getMainAppState<String>("main_state") ?? "unknown";
+      
+      // Don't refresh during game-related states
+      if (mainState == "active_game" || mainState == "pre_game" || mainState == "post_game") {
+        _log.info("⏸️ App is in game state (state: $mainState), queuing refresh for later...");
+        _queueTokenRefreshForNonGameState();
+      } else {
+        _log.info("✅ App is not in game state (state: $mainState), proceeding with token refresh...");
+        await _performTokenRefresh();
+      }
+    });
+    _log.info("✅ State-aware token refresh timer started");
+  }
+
+  /// ✅ Stop token refresh timer
+  void _stopTokenRefreshTimer() {
+    _tokenRefreshTimer?.cancel();
+    _tokenRefreshTimer = null;
+    _log.info("🛑 Token refresh timer stopped");
+  }
+
+  /// ✅ Perform actual token refresh
+  Future<void> _performTokenRefresh() async {
+    try {
+      final hasValidJWT = await hasValidToken();
+      if (!hasValidJWT) {
+        _log.error("❌ Token refresh failed, stopping timer");
+        _stopTokenRefreshTimer();
+      } else {
+        _log.info("✅ Token refresh completed successfully");
+      }
+    } catch (e) {
+      _log.error("❌ Error during token refresh: $e");
+    }
+  }
+
+  /// ✅ Queue token refresh for when app becomes backgrounded
+  void _queueTokenRefreshForBackground() {
+    // Set a flag to refresh when state changes to backgrounded
+    _pendingTokenRefresh = true;
+    _log.info("📋 Token refresh queued for background state");
+  }
+
+  /// ✅ Queue token refresh for when app is NOT in game-related states
+  void _queueTokenRefreshForNonGameState() {
+    _pendingTokenRefresh = true;
+    _log.info("📋 Token refresh queued for non-game state");
+  }
+
+  /// ✅ Check and perform queued token refresh when state changes
+  void checkQueuedTokenRefresh() {
+    if (_pendingTokenRefresh) {
+      final stateManager = StateManager();
+      final mainState = stateManager.getMainAppState<String>("main_state") ?? "unknown";
+      
+      // Only refresh when NOT in game-related states
+      if (mainState != "active_game" && mainState != "pre_game" && mainState != "post_game") {
+        _log.info("✅ App is not in game state (state: $mainState), performing queued token refresh...");
+        _pendingTokenRefresh = false;
+        _performTokenRefresh();
+      }
+    }
+  }
+
+  /// ✅ Update main app state for testing (can be called from UI)
+  void updateMainAppState(String state) {
+    final stateManager = StateManager();
+    stateManager.updateMainAppState("main_state", state);
+    _log.info("📱 Updated main app state to: $state");
+    
+    // Check if we have a queued refresh and app is not in game state
+    checkQueuedTokenRefresh();
+  }
+
+  /// ✅ Get current main app state for debugging
+  String getCurrentMainAppState() {
+    final stateManager = StateManager();
+    return stateManager.getMainAppState<String>("main_state") ?? "unknown";
+  }
+
+  /// ✅ Setup state listener for queued token refreshes
+  void _setupStateListener() {
+    final stateManager = StateManager();
+    stateManager.addListener(() {
+      // Check if we have a queued token refresh and app state is now idle
+      checkQueuedTokenRefresh();
+    });
+    _log.info("✅ State listener setup for queued token refreshes");
+  }
+
+  // Token refresh timer and state management
+  Timer? _tokenRefreshTimer;
+  bool _pendingTokenRefresh = false;
 
   @override
   void dispose() {

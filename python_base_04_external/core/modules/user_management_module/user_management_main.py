@@ -3,6 +3,7 @@ from core.managers.database_manager import DatabaseManager
 from core.managers.jwt_manager import JWTManager, TokenType
 from core.managers.redis_manager import RedisManager
 from tools.logger.custom_logging import custom_log
+from utils.config.config import Config
 from flask import request, jsonify
 from datetime import datetime
 from typing import Dict, Any
@@ -430,7 +431,7 @@ class UserManagementModule(BaseModule):
                     "access_token": access_token,
                     "refresh_token": refresh_token,
                     "token_type": "Bearer",
-                    "expires_in": 1800  # 30 minutes
+                    "expires_in": Config.JWT_ACCESS_TOKEN_EXPIRES  # From config
                 }
             }), 200
             
@@ -543,7 +544,7 @@ class UserManagementModule(BaseModule):
                     "user": user,
                     "access_token": new_access_token,
                     "token_type": "Bearer",
-                    "expires_in": 1800  # 30 minutes
+                    "expires_in": Config.JWT_ACCESS_TOKEN_EXPIRES  # From config
                 }
             }), 200
             

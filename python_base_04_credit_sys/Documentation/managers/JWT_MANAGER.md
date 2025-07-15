@@ -22,20 +22,20 @@ class JWTManager:
         self.redis_manager = redis_manager
         self.secret_key = Config.JWT_SECRET_KEY
         self.algorithm = Config.JWT_ALGORITHM
-        self.access_token_expire_seconds = 1800  # 30 minutes
-        self.refresh_token_expire_seconds = 86400  # 24 hours
+        self.access_token_expire_seconds = Config.JWT_ACCESS_TOKEN_EXPIRES  # 1 hour (3600s)
+        self.refresh_token_expire_seconds = Config.JWT_REFRESH_TOKEN_EXPIRES  # 7 days (604800s)
 ```
 
 ## 🔐 Token Types
 
 ### Access Tokens
-- **Lifetime**: 30 minutes
+- **Lifetime**: 1 hour (3600 seconds)
 - **Purpose**: API authentication
 - **Claims**: user_id, username, email, fingerprint
 - **Usage**: Authorization header for API requests
 
 ### Refresh Tokens
-- **Lifetime**: 24 hours
+- **Lifetime**: 7 days (604800 seconds)
 - **Purpose**: Generate new access tokens
 - **Claims**: user_id, fingerprint
 - **Usage**: Token refresh endpoint
@@ -50,9 +50,9 @@ def create_token(self, data: Dict[str, Any], token_type: TokenType, expires_in: 
     
     # Set expiration based on token type
     if token_type == TokenType.ACCESS:
-        expire = datetime.utcnow() + timedelta(seconds=1800)  # 30 min
+        expire = datetime.utcnow() + timedelta(seconds=self.access_token_expire_seconds)  # 1 hour
     elif token_type == TokenType.REFRESH:
-        expire = datetime.utcnow() + timedelta(seconds=86400)  # 24 hours
+        expire = datetime.utcnow() + timedelta(seconds=self.refresh_token_expire_seconds)  # 7 days
     
     # Add client fingerprint for security
     client_fingerprint = self._get_client_fingerprint()
@@ -241,8 +241,8 @@ JWT_HEADER_TYPE = "Bearer"
 
 ### Token Lifetimes
 
-- **Access Token**: 30 minutes (1800 seconds)
-- **Refresh Token**: 24 hours (86400 seconds)
+- **Access Token**: 1 hour (3600 seconds)
+- **Refresh Token**: 7 days (604800 seconds)
 - **Algorithm**: HS256 (HMAC with SHA-256)
 
 ## 🛡️ Security Features

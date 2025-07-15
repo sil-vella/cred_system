@@ -19,9 +19,9 @@ class JWTManager:
         self.redis_manager = redis_manager if redis_manager else RedisManager()
         self.secret_key = Config.JWT_SECRET_KEY
         self.algorithm = Config.JWT_ALGORITHM
-        # Shorter token lifetimes
-        self.access_token_expire_seconds = 1800  # 30 minutes
-        self.refresh_token_expire_seconds = 86400  # 24 hours
+        # Use Config values for token lifetimes (from secret files)
+        self.access_token_expire_seconds = Config.JWT_ACCESS_TOKEN_EXPIRES  # 1 hour (3600s)
+        self.refresh_token_expire_seconds = Config.JWT_REFRESH_TOKEN_EXPIRES  # 7 days (604800s)
         custom_log("JWTManager initialized")
 
     def _get_client_fingerprint(self) -> str:

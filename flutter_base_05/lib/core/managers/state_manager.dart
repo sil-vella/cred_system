@@ -25,7 +25,10 @@ class StateManager with ChangeNotifier {
   static StateManager? _instance;
 
   final Map<String, ModuleState> _moduleStates = {}; // Stores structured module states
-  Map<String, dynamic> _mainAppState = {'main_state': 'idle'}; // Default main app state
+  Map<String, dynamic> _mainAppState = {
+    'app_state': 'resumed',  // App lifecycle state (resumed, paused, etc.)
+    'main_state': 'idle'     // Main app state (idle, active, busy, etc.)
+  }; // Default main app state
 
 
   StateManager._internal() {
@@ -155,7 +158,11 @@ class StateManager with ChangeNotifier {
   // ------ Main App State Methods ------
 
   void setMainAppState(Map<String, dynamic> initialState) {
-    _mainAppState = {'main_state': 'idle', ...initialState};
+    _mainAppState = {
+      'app_state': 'resumed',  // App lifecycle state (resumed, paused, etc.)
+      'main_state': 'idle',    // Main app state (idle, active, busy, etc.)
+      ...initialState
+    };
     _log.info("📌 Main app state initialized: $_mainAppState");
     _log.info("📊 Current app state after main app state initialization:");
     _logAppState();

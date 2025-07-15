@@ -46,21 +46,64 @@ void main() async {
   );
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
   @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  final AppManager _appManager = AppManager();
+  final StateManager _stateManager = StateManager();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    // Update app lifecycle state (separate from main app state)
+    switch (state) {
+      case AppLifecycleState.resumed:
+        _stateManager.updateMainAppState("app_state", "resumed");
+        break;
+      case AppLifecycleState.inactive:
+        _stateManager.updateMainAppState("app_state", "inactive");
+        break;
+      case AppLifecycleState.paused:
+        _stateManager.updateMainAppState("app_state", "paused");
+        break;
+      case AppLifecycleState.detached:
+        _stateManager.updateMainAppState("app_state", "detached");
+        break;
+      case AppLifecycleState.hidden:
+        _stateManager.updateMainAppState("app_state", "hidden");
+        break;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final appManager = Provider.of<AppManager>(context);
     final navigationManager = Provider.of<NavigationManager>(context, listen: false);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!appManager.isInitialized) {
-        appManager.initializeApp(context);
+      if (!_appManager.isInitialized) {
+        _appManager.initializeApp(context);
       }
     });
 
-    if (!appManager.isInitialized) {
+    if (!_appManager.isInitialized) {
       return const MaterialApp(
         home: Scaffold(body: Center(child: CircularProgressIndicator())),
       );

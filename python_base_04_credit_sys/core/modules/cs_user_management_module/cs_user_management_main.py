@@ -644,7 +644,7 @@ class CSUserManagementModule(BaseModule):
                     "user": user,
                     "access_token": new_access_token,
                     "token_type": "Bearer",
-                    "expires_in": 1800  # 30 minutes
+                    "expires_in": Config.JWT_ACCESS_TOKEN_EXPIRES  # From config
                 }
             }), 200
             

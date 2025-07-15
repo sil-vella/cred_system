@@ -38,9 +38,6 @@ class WebSocketManager {
   
   // Note: Event handling is now delegated to WSEventManager
   
-  // Token management
-  Timer? _tokenRefreshTimer;
-  
   // Module manager for accessing LoginModule
   final ModuleManager _moduleManager = ModuleManager();
   
@@ -193,8 +190,8 @@ class WebSocketManager {
       // Register all event listeners
       _eventListener!.registerAllListeners();
       
-      // Start token refresh timer
-      _startTokenRefreshTimer();
+      // Token refresh is now handled by AuthManager
+      // No need to setup token refresh here
       
       _isInitialized = true;
       _log.info("✅ WebSocket manager initialized successfully");
@@ -204,6 +201,14 @@ class WebSocketManager {
       _log.error("❌ Error initializing WebSocket manager: $e");
       return false;
     }
+  }
+
+  /// ✅ Setup state listener for queued token refreshes
+  void _setupStateListener() {
+    final stateManager = StateManager();
+    // Token refresh is now handled by AuthManager
+    // No need to setup state listener here
+    _log.info("✅ State listener setup for queued token refreshes");
   }
 
   /// Set up Socket.IO event handlers
@@ -431,27 +436,8 @@ class WebSocketManager {
   /// Note: All events are now handled through the stream system
   /// and delegated to WSEventManager for processing
 
-  /// Start token refresh timer
-  void _startTokenRefreshTimer() {
-    _stopTokenRefreshTimer();
-    _tokenRefreshTimer = Timer.periodic(const Duration(minutes: 4), (timer) async {
-      _log.info("🔄 Refreshing token...");
-      final loginModule = _moduleManager.getModuleByType<LoginModule>();
-      if (loginModule != null) {
-        final hasToken = await loginModule.hasValidToken();
-        if (!hasToken) {
-          _log.error("❌ Token refresh failed, stopping timer");
-          _stopTokenRefreshTimer();
-        }
-      }
-    });
-  }
-
-  /// Stop token refresh timer
-  void _stopTokenRefreshTimer() {
-    _tokenRefreshTimer?.cancel();
-    _tokenRefreshTimer = null;
-  }
+  /// ✅ Token refresh is now handled by AuthManager
+  /// This ensures proper separation of concerns
 
   /// Connect to WebSocket server
   Future<bool> connect() async {
@@ -564,7 +550,6 @@ class WebSocketManager {
   void disconnect() {
     try {
       _socket?.disconnect();
-      _stopTokenRefreshTimer();
       
       // Update our tracked connection state
       _isConnected = false;
@@ -844,7 +829,7 @@ class WebSocketManager {
     try {
       _socket?.disconnect();
       _socket = null;
-      _stopTokenRefreshTimer();
+      // Token refresh is now handled by AuthManager
       _eventController.close();
       _connectionController.close();
       _messageController.close();

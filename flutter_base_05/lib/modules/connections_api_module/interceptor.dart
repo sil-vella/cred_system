@@ -1,9 +1,14 @@
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http_interceptor/http_interceptor.dart';
 import 'package:http/http.dart';
+import '../../core/managers/auth_manager.dart';
 
 class AuthInterceptor implements InterceptorContract {
-  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  AuthManager? _authManager;
+
+  /// ✅ Initialize AuthManager
+  void initialize() {
+    _authManager = AuthManager();
+  }
 
   /// ✅ Decide if the request should be intercepted
   @override
@@ -13,12 +18,17 @@ class AuthInterceptor implements InterceptorContract {
   @override
   bool shouldInterceptResponse() => true;
 
-  /// ✅ Modify the request to add an authorization token
+  /// ✅ Modify the request to add an authorization token using AuthManager
   @override
   Future<BaseRequest> interceptRequest({required BaseRequest request}) async {
-    String? token = await _storage.read(key: 'auth_token');
+    if (_authManager == null) {
+      _authManager = AuthManager();
+    }
+    
+    // Use AuthManager to get current valid token
+    final token = await _authManager!.getCurrentValidToken();
     if (token != null) {
-      request.headers["Authorization"] = "Bearer $token"; // ✅ Auto-add token
+      request.headers["Authorization"] = "Bearer $token"; // ✅ Auto-add token via AuthManager
     }
     return request;
   }
@@ -27,8 +37,11 @@ class AuthInterceptor implements InterceptorContract {
   @override
   Future<BaseResponse> interceptResponse({required BaseResponse response}) async {
     if (response is Response && response.statusCode == 401) {
-      // ✅ Handle Unauthorized (maybe clear token or refresh it)
-      await _storage.delete(key: 'auth_token');
+      // ✅ Handle Unauthorized using AuthManager
+      if (_authManager == null) {
+        _authManager = AuthManager();
+      }
+      await _authManager!.clearTokens();
     }
     return response;
   }
