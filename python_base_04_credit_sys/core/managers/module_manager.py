@@ -4,39 +4,6 @@ from core.managers.module_registry import ModuleRegistry
 from core.modules.base_module import BaseModule
 
 class ModuleManager:
-"""
-class ModuleManager - Manages application state and operations
-
-Attributes:
-    module_instance: TODO: Add description
-    module: TODO: Add description
-    module: TODO: Add description
-    result: TODO: Add description
-    modules: TODO: Add description
-    load_order: TODO: Add description
-    initialized_count: TODO: Add description
-    status: TODO: Add description
-    disposal_order: TODO: Add description
-    modules: TODO: Add description
-    load_order: TODO: Add description
-    module_instance: TODO: Add description
-    module: TODO: Add description
-    module_class: TODO: Add description
-    error_msg: TODO: Add description
-
-Methods:
-    __init__(): TODO: Add description
-    register_module(): TODO: Add description
-    get_module(): TODO: Add description
-    call_module_method(): TODO: Add description
-    discover_modules(): TODO: Add description
-    resolve_dependencies(): TODO: Add description
-    initialize_modules(): TODO: Add description
-    register_and_initialize_module(): TODO: Add description
-    get_module_status(): TODO: Add description
-    dispose(): TODO: Add description
-
-"""
     def __init__(self):
         # A dictionary to hold all registered modules
         self.modules = {}

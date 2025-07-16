@@ -12,13 +12,6 @@ GAMEPLAY_LOGGING_ENABLED = False
 FUNCTION_LOGGING_ENABLED = False
 
 def custom_serializer(obj):
-"""
-function custom_serializer - Provides core functionality
-
-Args:
-    obj (Any): TODO: Add description
-
-"""
     if isinstance(obj, (set, tuple)):
         return list(obj)
     return str(obj)

@@ -10,14 +10,6 @@ import hashlib
 from flask import request
 
 class TokenType(Enum):
-"""
-class TokenType - Provides core functionality
-
-Attributes:
-    ACCESS: TODO: Add description
-    REFRESH: TODO: Add description
-
-"""
     ACCESS = "access"
     REFRESH = "refresh"
 

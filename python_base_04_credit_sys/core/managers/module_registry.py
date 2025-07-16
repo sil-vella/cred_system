@@ -170,15 +170,6 @@ class ModuleRegistry:
         :return: True if circular dependency exists
         """
         def dfs(node, visited, rec_stack):
-        """
-        function dfs - Provides core functionality
-        
-        Args:
-            node (Any): TODO: Add description
-            visited (Any): TODO: Add description
-            rec_stack (Any): TODO: Add description
-        
-        """
             visited.add(node)
             rec_stack.add(node)
             
